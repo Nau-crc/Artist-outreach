@@ -24,6 +24,9 @@
   "dependencies": {
     "@prisma/client": "6.19.3"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "prettier": "^3.3.3",

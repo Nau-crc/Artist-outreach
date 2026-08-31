@@ -1,10 +1,11 @@
-// Schema mínimo de fase 1 — el modelo completo llega en fase 2 (ver docs/database.md).
-// Prisma 6.19.3 (Prisma 7 movió datasource.url a prisma.config.ts; nos quedamos en 6 hasta
-// que la migración esté justificada por otros features).
+// Schema completo — fase 2.
+// Los emails se normalizan en el model antes de escribir (packages/shared Email.normalize),
+// así que el unique constraint sobre `email` es case-sensitive pero opera sobre valores
+// ya en lowercase. Sin columnas generadas → sin SQL manual.
+// Prisma 6.19.3.
 
 generator client {
   provider = "prisma-client-js"
-  previewFeatures = []
 }
 
 datasource db {
@@ -12,11 +13,445 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Placeholder para que `prisma generate` funcione en fase 1.
-// Todas las entidades reales se añaden en la migración de fase 2.
-model HealthPing {
-  id        String   @id @default(uuid())
-  createdAt DateTime @default(now()) @map("created_at")
+// ────────────────────────────────────────────────────────────────
+// ENUMS
+// ────────────────────────────────────────────────────────────────
 
-  @@map("health_pings")
+enum ContactStatus {
+  DISCOVERED
+  REVIEW_REQUIRED
+  REVIEWED
+  DISCARDED
+  SUPPRESSED
+}
+
+enum EmailStatus {
+  NOT_FOUND
+  FOUND
+  INVALID
+  BOUNCED
+}
+
+enum ConsentStatus {
+  UNKNOWN
+  REQUESTED
+  PENDING
+  CONFIRMED
+  WITHDRAWN
+}
+
+enum Permission {
+  NOT_REVIEWED
+  ELIGIBLE
+  NOT_ELIGIBLE
+  BLOCKED
+}
+
+enum DiscoverySourceType {
+  API
+  DIRECTORY
+  CSV
+  MANUAL
+}
+
+enum ComplianceStatus {
+  VERIFIED
+  UNVERIFIED
+  PROHIBITED
+}
+
+enum DiscoveryRunStatus {
+  RUNNING
+  SUCCEEDED
+  FAILED
+  RATE_LIMITED
+}
+
+enum ConsentRequestStatus {
+  PENDING
+  SENT
+  FAILED
+  CANCELLED
+}
+
+enum ConsentPurpose {
+  NEWSLETTER
+}
+
+enum ConsentRecordStatus {
+  CONFIRMED
+  WITHDRAWN
+}
+
+enum ConsentSource {
+  EMAIL_LINK
+  PUBLIC_FORM
+  MANUAL
+}
+
+enum NewsletterSubscriptionStatus {
+  PENDING_CONFIRMATION
+  CONFIRMED
+  UNSUBSCRIBED
+}
+
+enum SuppressionReason {
+  UNSUBSCRIBE
+  COMPLAINT
+  HARD_BOUNCE
+  MANUAL
+  WITHDRAWN
+}
+
+enum EmailPurpose {
+  CONSENT_REQUEST
+  DOUBLE_OPTIN
+  NEWSLETTER
+  SYSTEM
+}
+
+enum EmailMessageStatus {
+  QUEUED
+  SENT
+  FAILED
+}
+
+enum EmailEventType {
+  SENT
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+  OPENED
+  CLICKED
+}
+
+enum AuditActorKind {
+  USER
+  SYSTEM
+  WEBHOOK
+  PUBLIC
+}
+
+// ────────────────────────────────────────────────────────────────
+// CONTACTS
+// ────────────────────────────────────────────────────────────────
+
+model Contact {
+  id            String        @id @default(uuid()) @db.Uuid
+  artistName    String        @map("artist_name")
+  email         String?       @unique
+  website       String?
+  discipline    String?
+  country       String?       @db.Char(2)
+  city          String?
+  language      String?
+  contactStatus ContactStatus @default(DISCOVERED) @map("contact_status")
+  emailStatus   EmailStatus   @default(NOT_FOUND) @map("email_status")
+  consentStatus ConsentStatus @default(UNKNOWN) @map("consent_status")
+  permission    Permission    @default(NOT_REVIEWED)
+  lastActionAt  DateTime?     @map("last_action_at") @db.Timestamptz
+  reviewedAt    DateTime?     @map("reviewed_at") @db.Timestamptz
+  reviewedBy    String?       @map("reviewed_by") @db.Uuid
+  notes         String?
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  contactSources ContactSource[]
+  contactTags    ContactTag[]
+  consentRequests ConsentRequest[]
+  consents       Consent[]
+  newsletterSubscriptions NewsletterSubscription[]
+  emailMessages  EmailMessage[]
+
+  @@index([contactStatus])
+  @@index([permission])
+  @@index([consentStatus])
+  @@index([country, discipline])
+  @@map("contacts")
+}
+
+// ────────────────────────────────────────────────────────────────
+// DISCOVERY
+// ────────────────────────────────────────────────────────────────
+
+model DiscoverySource {
+  id               String              @id @default(uuid()) @db.Uuid
+  slug             String              @unique
+  name             String
+  type             DiscoverySourceType
+  complianceStatus ComplianceStatus    @default(UNVERIFIED) @map("compliance_status")
+  complianceNotes  String?             @map("compliance_notes")
+  termsUrl         String?             @map("terms_url")
+  enabled          Boolean             @default(false)
+  config           Json                @default("{}")
+  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+
+  runs           DiscoveryRun[]
+  contactSources ContactSource[]
+
+  @@map("discovery_sources")
+}
+
+model DiscoveryRun {
+  id                String             @id @default(uuid()) @db.Uuid
+  sourceId          String             @map("source_id") @db.Uuid
+  params            Json               @default("{}")
+  startedAt         DateTime           @default(now()) @map("started_at") @db.Timestamptz
+  finishedAt        DateTime?          @map("finished_at") @db.Timestamptz
+  status            DiscoveryRunStatus @default(RUNNING)
+  resultsCount     Int                @default(0) @map("results_count")
+  newContactsCount Int                @default(0) @map("new_contacts_count")
+  error             String?
+  triggeredBy       String?            @map("triggered_by") @db.Uuid
+  createdAt         DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  source         DiscoverySource @relation(fields: [sourceId], references: [id])
+  contactSources ContactSource[]
+
+  @@index([sourceId, startedAt])
+  @@map("discovery_runs")
+}
+
+model ContactSource {
+  id           String   @id @default(uuid()) @db.Uuid
+  contactId    String   @map("contact_id") @db.Uuid
+  runId        String?  @map("run_id") @db.Uuid
+  sourceId     String   @map("source_id") @db.Uuid
+  sourceUrl    String   @map("source_url")
+  raw          Json     @default("{}")
+  discoveredAt DateTime @default(now()) @map("discovered_at") @db.Timestamptz
+
+  contact Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  run     DiscoveryRun?   @relation(fields: [runId], references: [id])
+  source  DiscoverySource @relation(fields: [sourceId], references: [id])
+
+  @@index([contactId])
+  @@index([sourceId, discoveredAt])
+  @@map("contact_sources")
+}
+
+// ────────────────────────────────────────────────────────────────
+// TAGS
+// ────────────────────────────────────────────────────────────────
+
+model Tag {
+  id    String @id @default(uuid()) @db.Uuid
+  name  String @unique
+  color String?
+
+  contactTags ContactTag[]
+
+  @@map("tags")
+}
+
+model ContactTag {
+  contactId String @map("contact_id") @db.Uuid
+  tagId     String @map("tag_id") @db.Uuid
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+  @@map("contact_tags")
+}
+
+// ────────────────────────────────────────────────────────────────
+// CAMPAIGNS + TEMPLATES
+// ────────────────────────────────────────────────────────────────
+
+model Campaign {
+  id        String    @id @default(uuid()) @db.Uuid
+  name      String
+  active    Boolean   @default(false)
+  startsAt  DateTime? @map("starts_at") @db.Timestamptz
+  endsAt    DateTime? @map("ends_at") @db.Timestamptz
+  maxSends  Int?      @map("max_sends")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  consentRequests ConsentRequest[]
+
+  @@map("campaigns")
+}
+
+model ConsentTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  subject   String
+  bodyHtml  String   @map("body_html")
+  bodyText  String   @map("body_text")
+  version   Int      @default(1)
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  consentRequests ConsentRequest[]
+  emailMessages   EmailMessage[]
+
+  @@map("consent_templates")
+}
+
+// ────────────────────────────────────────────────────────────────
+// CONSENT
+// ────────────────────────────────────────────────────────────────
+
+model ConsentRequest {
+  id                  String               @id @default(uuid()) @db.Uuid
+  contactId           String               @map("contact_id") @db.Uuid
+  campaignId          String               @map("campaign_id") @db.Uuid
+  templateId          String               @map("template_id") @db.Uuid
+  textVersion         String               @map("text_version")
+  status              ConsentRequestStatus @default(PENDING)
+  token               String               @unique
+  tokenExpiresAt      DateTime?            @map("token_expires_at") @db.Timestamptz
+  sentAt              DateTime?            @map("sent_at") @db.Timestamptz
+  eligibilitySnapshot Json                 @default("{}") @map("eligibility_snapshot")
+  createdBy           String?              @map("created_by") @db.Uuid
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz
+
+  contact  Contact         @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  campaign Campaign        @relation(fields: [campaignId], references: [id])
+  template ConsentTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([contactId, sentAt(sort: Desc)])
+  @@map("consent_requests")
+}
+
+model Consent {
+  id           String              @id @default(uuid()) @db.Uuid
+  contactId    String              @map("contact_id") @db.Uuid
+  purpose      ConsentPurpose      @default(NEWSLETTER)
+  status       ConsentRecordStatus
+  source       ConsentSource
+  textVersion  String              @map("text_version")
+  grantedAt    DateTime            @default(now()) @map("granted_at") @db.Timestamptz
+  withdrawnAt  DateTime?           @map("withdrawn_at") @db.Timestamptz
+  evidence     Json                @default("{}")
+
+  contact                Contact                  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  newsletterSubscriptions NewsletterSubscription[]
+
+  @@index([contactId, purpose, grantedAt(sort: Desc)])
+  @@map("consents")
+}
+
+// ────────────────────────────────────────────────────────────────
+// NEWSLETTER
+// ────────────────────────────────────────────────────────────────
+
+model NewsletterSubscription {
+  id                      String                        @id @default(uuid()) @db.Uuid
+  contactId               String                        @map("contact_id") @db.Uuid
+  status                  NewsletterSubscriptionStatus  @default(PENDING_CONFIRMATION)
+  confirmationToken       String?                       @unique @map("confirmation_token")
+  confirmationExpiresAt   DateTime?                     @map("confirmation_expires_at") @db.Timestamptz
+  confirmedAt             DateTime?                     @map("confirmed_at") @db.Timestamptz
+  unsubscribedAt          DateTime?                     @map("unsubscribed_at") @db.Timestamptz
+  unsubscribeToken        String                        @unique @map("unsubscribe_token")
+  consentId               String?                       @map("consent_id") @db.Uuid
+  createdAt               DateTime                      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt               DateTime                      @updatedAt @map("updated_at") @db.Timestamptz
+
+  contact Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  consent Consent? @relation(fields: [consentId], references: [id])
+
+  @@index([contactId])
+  @@map("newsletter_subscriptions")
+}
+
+// ────────────────────────────────────────────────────────────────
+// SUPPRESSIONS
+// ────────────────────────────────────────────────────────────────
+
+model Suppression {
+  id            String            @id @default(uuid()) @db.Uuid
+  email         String            @unique
+  reason        SuppressionReason
+  notes         String?
+  suppressedAt  DateTime          @default(now()) @map("suppressed_at") @db.Timestamptz
+  suppressedBy  String?           @map("suppressed_by") @db.Uuid
+
+  @@map("suppressions")
+}
+
+// ────────────────────────────────────────────────────────────────
+// EMAIL
+// ────────────────────────────────────────────────────────────────
+
+model EmailMessage {
+  id                 String             @id @default(uuid()) @db.Uuid
+  contactId          String?            @map("contact_id") @db.Uuid
+  purpose            EmailPurpose
+  relatedId          String?            @map("related_id") @db.Uuid
+  provider           String
+  providerMessageId  String             @unique @map("provider_message_id")
+  recipient          String
+  subject            String?
+  templateId         String?            @map("template_id") @db.Uuid
+  textVersion        String?            @map("text_version")
+  status             EmailMessageStatus @default(QUEUED)
+  sentAt             DateTime?          @map("sent_at") @db.Timestamptz
+  error              String?
+  createdAt          DateTime           @default(now()) @map("created_at") @db.Timestamptz
+
+  contact  Contact?         @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  template ConsentTemplate? @relation(fields: [templateId], references: [id])
+  events   EmailEvent[]
+
+  @@index([contactId, sentAt(sort: Desc)])
+  @@map("email_messages")
+}
+
+model EmailEvent {
+  id              String         @id @default(uuid()) @db.Uuid
+  messageId       String         @map("message_id") @db.Uuid
+  eventType       EmailEventType @map("event_type")
+  providerEventId String         @map("provider_event_id")
+  occurredAt      DateTime       @default(now()) @map("occurred_at") @db.Timestamptz
+  payload         Json           @default("{}")
+
+  message EmailMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, eventType, providerEventId])
+  @@map("email_events")
+}
+
+// ────────────────────────────────────────────────────────────────
+// APP CONFIG (singleton)
+// ────────────────────────────────────────────────────────────────
+
+model AppConfig {
+  id                             Int      @id @default(1)
+  sendingEnabled                 Boolean  @default(false) @map("sending_enabled")
+  campaignEnabled                Boolean  @default(false) @map("campaign_enabled")
+  dailySendLimit                 Int      @default(0) @map("daily_send_limit")
+  hourlySendLimit                Int      @default(0) @map("hourly_send_limit")
+  minIntervalSeconds             Int      @default(60) @map("min_interval_seconds")
+  consentRequestCooldownDays     Int      @default(90) @map("consent_request_cooldown_days")
+  updatedAt                      DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  updatedBy                      String?  @map("updated_by") @db.Uuid
+
+  @@map("app_config")
+}
+
+// ────────────────────────────────────────────────────────────────
+// AUDIT LOGS
+// ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id         String         @id @default(uuid()) @db.Uuid
+  at         DateTime       @default(now()) @db.Timestamptz
+  actorId    String?        @map("actor_id") @db.Uuid
+  actorKind  AuditActorKind @map("actor_kind")
+  entityType String         @map("entity_type")
+  entityId   String?        @map("entity_id") @db.Uuid
+  action     String
+  before     Json?
+  after      Json?
+  metadata   Json?
+
+  @@index([entityType, entityId, at(sort: Desc)])
+  @@index([at(sort: Desc)])
+  @@map("audit_logs")
 }
