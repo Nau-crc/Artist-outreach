@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "jsx": "react-native",
+    "lib": ["ES2023"],
+    "moduleResolution": "Bundler",
+    "noEmit": true,
+    "types": ["react", "jest"],
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["app/**/*", "src/**/*", "tests/**/*", "nativewind-env.d.ts"],
+  "exclude": ["node_modules"]
+}

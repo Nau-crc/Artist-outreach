@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Artist Outreach",
+    "slug": "artist-outreach",
+    "scheme": "artistoutreach",
+    "version": "0.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.artistoutreach.mobile",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.artistoutreach.mobile"
+    },
+    "web": {
+      "bundler": "metro"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true,
+      "tsconfigPaths": true
+    }
+  }
+}

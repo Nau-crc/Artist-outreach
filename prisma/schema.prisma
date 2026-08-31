@@ -1,0 +1,21 @@
+// Schema mínimo de fase 1 — el modelo completo llega en fase 2 (ver docs/database.md).
+// Prisma 7.10.0 estable.
+
+generator client {
+  provider = "prisma-client-js"
+  previewFeatures = []
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Placeholder para que `prisma generate` funcione en fase 1.
+// Todas las entidades reales se añaden en la migración de fase 2.
+model HealthPing {
+  id        String   @id @default(uuid())
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("health_pings")
+}
