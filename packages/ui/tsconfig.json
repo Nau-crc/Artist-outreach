@@ -2,10 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-jsx",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "moduleResolution": "Bundler",
     "noEmit": true,
     "types": ["react", "vitest/globals", "@testing-library/jest-dom"]
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "nativewind-env.d.ts"],
   "exclude": ["node_modules", "dist"]
 }

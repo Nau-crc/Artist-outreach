@@ -1,5 +1,6 @@
 // Schema mínimo de fase 1 — el modelo completo llega en fase 2 (ver docs/database.md).
-// Prisma 7.10.0 estable.
+// Prisma 6.19.3 (Prisma 7 movió datasource.url a prisma.config.ts; nos quedamos en 6 hasta
+// que la migración esté justificada por otros features).
 
 generator client {
   provider = "prisma-client-js"

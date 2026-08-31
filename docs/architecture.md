@@ -58,7 +58,7 @@ Verificado 2026-08-31 con `npm view`:
 | Estilo web | Tailwind CSS v4 | 4.3.3 |
 | Lenguaje | TypeScript estricto | 5.x |
 | DB | PostgreSQL (Supabase managed) | — |
-| ORM | Prisma | 7.10.0 (estable; 8 en RC) |
+| ORM | Prisma | 6.19.3 (7 introduce breaking change en datasource) |
 | Validación | Zod (compartido en `packages/shared`) | 4.5.4 |
 | Auth | Supabase Auth (JWT + magic link) | supabase-js 2.112.4 |
 | Email | Abstracción `EmailProvider`, impl. Resend | 6.25.0 |
