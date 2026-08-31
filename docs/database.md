@@ -6,9 +6,18 @@ Todas las tablas usan `id String @id @default(uuid())`, `createdAt DateTime @def
 
 Acceso desde el backend Node.js (Next.js API routes) con `PrismaClient` singleton (`src/lib/prisma.ts`). Ningún cliente (móvil ni web) habla directamente con Postgres — todo pasa por la API.
 
-RLS activada en todas las tablas como defensa en profundidad. Los checks reales de autorización viven en los middleware (`auth`, `admin-only`) y en los controllers. Los endpoints públicos usan tokens de un solo uso como autenticación de la operación.
+Autorización en los middleware (`auth`, `admin-only`) y en los controllers. Los endpoints públicos usan tokens de un solo uso como autenticación de la operación. Como móvil y web nunca hablan directamente con Postgres, no usamos RLS: sería defensa en profundidad para un escenario que no existe en esta arquitectura.
 
-Los `check` constraints, triggers de audit y la validación sintáctica de email se aplican con `Unsafe.raw` en una migración manual añadida encima de las de Prisma (Prisma no genera triggers ni checks arbitrarios). Cada tabla que necesite triggers lleva su migración `xxxx_triggers.sql` correspondiente.
+**Invariantes vía Prisma, no triggers.** Coherente con la decisión de que Node.js sea el único que toca la DB:
+
+- **Audit log**: escrito por el model en el mismo `$transaction` que el cambio auditado.
+- **Suppression cascade**: el model de `suppressions` marca los contactos afectados dentro del mismo `$transaction`.
+- **Transiciones de estado**: validadas por `canTransition()` de `packages/shared` en el model antes del write.
+- **Bounce/complaint → suppression**: el controller del webhook los inserta explícitamente en `email_events` y `suppressions`.
+
+La única migración SQL manual es para lo que Prisma no expresa en `schema.prisma`:
+
+- `email_normalized` como **columna generada** (`GENERATED ALWAYS AS (lower(trim(email))) STORED`) para permitir el unique case-insensitive.
 
 ## Diagrama lógico
 
@@ -288,30 +297,34 @@ Registro append-only.
 
 RLS: solo lectura para admins; escritura vía triggers/servicio.
 
-## Constraints y triggers clave
+## Constraints e invariantes
+
+En el esquema (Prisma + migración SQL mínima):
 
 - `unique (contacts.email_normalized) where not null`.
-- `check (contacts.email is null or email ~* '^[^@\s]+@[^@\s]+\.[^@\s]+$')` — validación mínima; validación real en Zod.
-- Trigger `contacts_status_audit` — cualquier cambio de `contact_status`, `email_status`, `consent_status`, `permission` genera `audit_logs`.
-- Trigger `suppressions_cascade` — al insertar en `suppressions`, marca los contactos correspondientes.
-- Trigger `email_events_side_effects` — `HARD_BOUNCE` y `COMPLAINED` insertan en `suppressions` (idempotente).
-- Trigger `app_config_audit` — diff de UPDATE al `audit_logs`.
-- Trigger `updated_at` estándar en todas las tablas mutables.
+- `contacts.email_normalized` como columna generada.
+- `updatedAt` gestionado por Prisma (`@updatedAt`).
 
-## RLS — defensa en profundidad
+En los models Node.js (`src/models/`), dentro de `$transaction`:
 
-La autorización real vive en el backend NestJS (guards + casos de uso). RLS existe por si algún día se abre otro camino a la DB.
+- Cambios de estado en `contacts` → registro en `audit_logs`.
+- Insert en `suppressions` → marcar contactos con `email_normalized` coincidente (`contact_status = SUPPRESSED`, `permission = BLOCKED`).
+- Webhook de email → insertar `email_events` + suppression si `HARD_BOUNCE` o `COMPLAINED` (idempotente por `unique(message_id, event_type, provider_event_id)`).
+- UPDATE en `app_config` → diff en `audit_logs`.
+- Validación sintáctica de email → `EmailAddress` value object en `packages/shared`.
+- Transiciones de estado válidas → `canTransition()` de `packages/shared`.
 
-```sql
--- Deniega todo por defecto:
-alter table <t> enable row level security;
--- El rol del backend puentea RLS con SECURITY DEFINER en funciones puntuales
--- o simplemente usando un rol con BYPASSRLS controlado (aún así probamos
--- que los guards del backend rechazan cualquier acceso no admin).
--- Cliente móvil y web nunca se conectan a Postgres.
-```
+Los tests de integración con Postgres real verifican estas invariantes por model.
 
-Nada expone `service_role` al bundle cliente. Los endpoints públicos (`/public/subscribe`, `/public/confirm`, `/public/unsubscribe`, `/public/consent`) son route handlers de NestJS, van a la DB por el mismo pool, y solo aceptan la operación mínima autenticada por su token.
+## Autorización
+
+Toda la autorización vive en los middleware del backend Node.js (`auth`, `admin-only`) y en los controllers. Móvil y web pública nunca hablan con Postgres — todo pasa por la API.
+
+- Endpoints privados (`/api/*` excepto `/api/public/*` y `/api/webhooks/*`) exigen JWT admin verificado por JWKS de Supabase.
+- Endpoints públicos autentican la operación por token de un solo uso (`consent_requests.token`, `newsletter_subscriptions.confirmation_token`, `newsletter_subscriptions.unsubscribe_token`).
+- Endpoints de webhook validan la firma del proveedor (`RESEND_WEBHOOK_SECRET`).
+
+`DATABASE_URL` solo en variables de entorno del servidor. Nunca expuesto al bundle cliente.
 
 ## Datos que NO se almacenan
 

@@ -44,8 +44,9 @@ Objetivo: DB completa y CRM navegable en móvil, sin discovery ni envío.
 
 - Prisma:
   - `schema.prisma` con todas las tablas de [database.md](./database.md): enums, relaciones, unique constraints.
-  - Migración manual `xxxx_triggers.sql` con triggers de audit, RLS y triggers de suppression cascade.
+  - Migración SQL mínima para `email_normalized` como columna generada (única cosa que Prisma no expresa).
   - Seed idempotente (`prisma/seed.ts`) con 20 contactos ficticios.
+  - Invariantes (audit, suppression cascade, transiciones) implementadas en los models Node dentro de `$transaction`. Sin triggers ni RLS — móvil y web pública nunca tocan Postgres.
 - Backend (`apps/web`):
   - `models/`: `contact`, `audit`, `config`, `suppression`.
   - `controllers/`: `contacts`, `audit`, `config`, `suppressions`.
