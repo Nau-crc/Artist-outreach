@@ -3,13 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./index.ts",
+  "main": "./index.mjs",
   "exports": {
-    ".": "./index.ts",
+    ".": "./index.mjs",
     "./tsconfig": "./tsconfig.base.json",
     "./eslint": "./eslint-preset.mjs",
-    "./tailwind": "./tailwind-preset.ts",
-    "./tokens": "./tokens.ts",
+    "./tailwind": "./tailwind-preset.mjs",
+    "./tokens": "./tokens.mjs",
     "./prettier": "./prettier.config.mjs"
   },
   "dependencies": {

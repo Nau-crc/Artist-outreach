@@ -1,4 +1,5 @@
 import type { Config } from 'tailwindcss'
+// @ts-expect-error — .mjs sin tipos, es un preset simple de Tailwind
 import preset from '@artist-outreach/config/tailwind'
 
 const config: Config = {

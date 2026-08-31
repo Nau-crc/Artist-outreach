@@ -45,7 +45,7 @@ export const colors = {
     subtle: '#E7E7EC',
     strong: '#B8B8C2',
   },
-} as const
+}
 
 export const spacing = {
   0: 0,
@@ -59,7 +59,7 @@ export const spacing = {
   10: 40,
   12: 48,
   16: 64,
-} as const
+}
 
 export const radius = {
   none: 0,
@@ -68,7 +68,7 @@ export const radius = {
   lg: 12,
   xl: 16,
   full: 9999,
-} as const
+}
 
 export const typography = {
   fontFamily: {
@@ -96,9 +96,4 @@ export const typography = {
     semibold: '600',
     bold: '700',
   },
-} as const
-
-export type Colors = typeof colors
-export type Spacing = typeof spacing
-export type Radius = typeof radius
-export type Typography = typeof typography
+}
