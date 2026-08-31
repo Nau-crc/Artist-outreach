@@ -21,6 +21,9 @@
     "format": "prettier --write .",
     "clean": "turbo run clean && rm -rf node_modules"
   },
+  "dependencies": {
+    "@prisma/client": "6.19.3"
+  },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "prettier": "^3.3.3",
