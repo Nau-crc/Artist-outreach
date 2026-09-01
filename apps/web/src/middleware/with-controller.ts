@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { z, ZodError } from 'zod'
 import { logger } from '@/lib/logger'
+import { checkRateLimit, ipFromRequest } from '@/services/rate-limit'
 import type { AuthClaims } from './auth'
 import { ConfigurationError, ForbiddenError, UnauthorizedError, requireAdmin } from './auth'
 
@@ -18,11 +19,27 @@ export type ControllerHandler<TBody, TParams, TOutput> = (
   input: ControllerInput<TBody, TParams>,
 ) => Promise<TOutput>
 
+export interface RateLimitOptions {
+  key: string
+  limit: number
+  windowSeconds: number
+}
+
 export interface ControllerOptions<TBody, TParams> {
   bodySchema?: z.ZodType<TBody>
   paramsSchema?: z.ZodType<TParams>
   requireAdmin?: boolean
+  rateLimit?: RateLimitOptions
   status?: number
+}
+
+export class RateLimitedError extends Error {
+  readonly retryAfter: number
+  constructor(retryAfter: number) {
+    super('Rate limit exceeded')
+    this.name = 'RateLimitedError'
+    this.retryAfter = retryAfter
+  }
 }
 
 export class ValidationError extends Error {
@@ -62,6 +79,18 @@ export function withController<TBody = void, TParams = unknown, TOutput = unknow
       const params: TParams = options.paramsSchema ? options.paramsSchema.parse(rawParams) : rawParams
 
       const ctx: RouteContext<TParams> = { params }
+
+      if (options.rateLimit) {
+        const ip = ipFromRequest(request)
+        const rl = checkRateLimit({
+          key: `${options.rateLimit.key}:${ip}`,
+          limit: options.rateLimit.limit,
+          windowSeconds: options.rateLimit.windowSeconds,
+        })
+        if (!rl.allowed) {
+          throw new RateLimitedError(Math.ceil((rl.resetAt - Date.now()) / 1000))
+        }
+      }
 
       if (options.requireAdmin) {
         ctx.auth = requireAdmin(request)
@@ -114,6 +143,12 @@ function errorResponse(err: unknown): Response {
   }
   if (err instanceof ConflictError) {
     return NextResponse.json({ error: 'Conflict', message: err.message }, { status: 409 })
+  }
+  if (err instanceof RateLimitedError) {
+    return NextResponse.json(
+      { error: 'RateLimited', retryAfter: err.retryAfter },
+      { status: 429, headers: { 'Retry-After': String(err.retryAfter) } },
+    )
   }
   if (err instanceof ConfigurationError) {
     logger.error({ err }, 'Configuration error')
