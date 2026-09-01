@@ -7,6 +7,7 @@ import { Card, FormField } from '@artist-outreach/ui/molecules'
 import { AppHeader } from '@artist-outreach/ui/organisms'
 import { api, ApiError } from '@/lib/api'
 import { fillPreviewVars, textToHtml } from '@/lib/text-to-html'
+import { VariableChips, appendVariable } from '@/components/VariableChips'
 
 const DEFAULT_BODY = `Hola {{ artistName }},
 
@@ -27,7 +28,10 @@ export default function NewTemplateScreen() {
   const [saving, setSaving] = useState(false)
 
   const previewSubject = useMemo(() => fillPreviewVars(subject), [subject])
-  const previewText = useMemo(() => fillPreviewVars(bodyText), [bodyText])
+  const previewParagraphs = useMemo(
+    () => fillPreviewVars(bodyText).split(/\n{2,}/),
+    [bodyText],
+  )
 
   async function save() {
     if (!name.trim() || !subject.trim() || !bodyText.trim()) return
@@ -47,7 +51,7 @@ export default function NewTemplateScreen() {
     <SafeAreaView className="flex-1 bg-surface-base">
       <AppHeader
         title="Nueva plantilla"
-        subtitle="Variables: {{ artistName }}, {{ confirmUrl }}, {{ unsubscribeUrl }}"
+        subtitle="Usa los botones para insertar variables — no tecles nada entre llaves."
         trailing={
           <Button variant="ghost" size="sm" onPress={() => router.back()}>
             Cancelar
@@ -59,25 +63,39 @@ export default function NewTemplateScreen() {
         <FormField label="Nombre interno" required hint="Solo se ve en el panel — no aparece en el email.">
           <Input value={name} onChange={setName} placeholder="Solicitud v1" />
         </FormField>
-        <FormField label="Asunto" required hint="Puedes usar {{ artistName }}.">
+
+        <FormField label="Asunto" required>
           <Input value={subject} onChange={setSubject} />
         </FormField>
+        <VariableChips
+          target="subject"
+          onInsert={(v) => setSubject((prev) => appendVariable(prev, v))}
+        />
+
         <FormField
           label="Cuerpo del mensaje"
           required
-          hint="Escribe en texto normal. Deja una línea en blanco para separar párrafos. El HTML se genera solo."
+          hint="Deja una línea en blanco para separar párrafos. El HTML se genera solo."
         >
           <Input value={bodyText} onChange={setBodyText} multiline rows={14} />
         </FormField>
+        <VariableChips
+          target="body"
+          onInsert={(v) => setBodyText((prev) => appendVariable(prev, v))}
+        />
 
+        <Text className="text-xs text-text-muted uppercase mt-4">Vista previa</Text>
         <Card variant="muted">
-          <Text className="text-xs text-text-muted uppercase mb-2">Vista previa</Text>
-          <Text className="text-base font-semibold text-text-primary mb-3">{previewSubject}</Text>
-          {previewText.split(/\n{2,}/).map((p, i) => (
-            <Text key={i} className="text-sm text-text-primary mb-3 leading-6">
-              {p}
-            </Text>
-          ))}
+          <View className="gap-2">
+            <Text className="text-base font-semibold text-text-primary">{previewSubject}</Text>
+            <View className="pt-2">
+              {previewParagraphs.map((p, i) => (
+                <Text key={i} className="text-sm text-text-primary mb-3 leading-6 whitespace-pre-wrap">
+                  {p}
+                </Text>
+              ))}
+            </View>
+          </View>
         </Card>
 
         <Button onPress={save} disabled={saving || !name.trim()} testID="save">

@@ -7,6 +7,7 @@ import { Card, FormField } from '@artist-outreach/ui/molecules'
 import { AppHeader } from '@artist-outreach/ui/organisms'
 import { api, ApiError, type Template } from '@/lib/api'
 import { fillPreviewVars, textToHtml } from '@/lib/text-to-html'
+import { VariableChips, appendVariable } from '@/components/VariableChips'
 
 export default function TemplateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
@@ -143,26 +144,36 @@ export default function TemplateDetailScreen() {
             <FormField label="Nombre interno">
               <Input value={currentName} onChange={setNameDraft} />
             </FormField>
+
             <FormField label="Asunto">
               <Input value={currentSubject} onChange={setSubjectDraft} />
             </FormField>
+            <VariableChips
+              target="subject"
+              onInsert={(v) => setSubjectDraft(appendVariable(currentSubject, v))}
+            />
+
             <FormField
               label="Cuerpo del mensaje"
-              hint="Texto normal. El HTML se genera automáticamente. Cambios en el contenido suben la versión."
+              hint="Deja una línea en blanco para separar párrafos. Cambios en el contenido suben la versión."
             >
               <Input value={currentText} onChange={setTextDraft} multiline rows={14} />
             </FormField>
+            <VariableChips
+              target="body"
+              onInsert={(v) => setTextDraft(appendVariable(currentText, v))}
+            />
 
+            <View className="flex-row items-center gap-2 mt-4">
+              <Text className="text-xs text-text-muted uppercase">Vista previa</Text>
+              <Badge tone="brand">v{t.version}{dirty ? '+1' : ''}</Badge>
+            </View>
             <Card variant="muted">
               <View className="gap-2">
-                <View className="flex-row items-center gap-2">
-                  <Badge tone="brand">v{t.version}{dirty ? '+1' : ''}</Badge>
-                  <Text className="text-xs text-text-muted uppercase">Vista previa</Text>
-                </View>
                 <Text className="text-base font-semibold text-text-primary">{previewSubject}</Text>
                 <View className="pt-2">
                   {previewParagraphs.map((p, i) => (
-                    <Text key={i} className="text-sm text-text-primary mb-3 leading-6">
+                    <Text key={i} className="text-sm text-text-primary mb-3 leading-6 whitespace-pre-wrap">
                       {p}
                     </Text>
                   ))}
