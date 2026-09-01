@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@artist-outreach/config": "workspace:*",
+    "@artist-outreach/shared": "workspace:*",
     "clsx": "^2.1.1"
   },
   "peerDependencies": {

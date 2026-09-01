@@ -8,25 +8,34 @@ import { AppHeader } from '@artist-outreach/ui/organisms'
 import { api, ApiError, type AppConfig, type Contact } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 
-interface DashboardData {
-  config: AppConfig
-  counts: Record<string, number>
+interface Counts {
+  total: number
+  reviewRequired: number
+  reviewed: number
+  eligible: number
+  consentConfirmed: number
+  suppressed: number
 }
 
-function summarize(contacts: Contact[]): Record<string, number> {
-  const c: Record<string, number> = {
+interface DashboardData {
+  config: AppConfig
+  counts: Counts
+}
+
+function summarize(contacts: Contact[]): Counts {
+  const c: Counts = {
     total: contacts.length,
-    review_required: 0,
+    reviewRequired: 0,
     reviewed: 0,
     eligible: 0,
-    consent_confirmed: 0,
+    consentConfirmed: 0,
     suppressed: 0,
   }
   for (const contact of contacts) {
-    if (contact.contactStatus === 'REVIEW_REQUIRED') c.review_required++
+    if (contact.contactStatus === 'REVIEW_REQUIRED') c.reviewRequired++
     if (contact.contactStatus === 'REVIEWED') c.reviewed++
     if (contact.permission === 'ELIGIBLE') c.eligible++
-    if (contact.consentStatus === 'CONFIRMED') c.consent_confirmed++
+    if (contact.consentStatus === 'CONFIRMED') c.consentConfirmed++
     if (contact.contactStatus === 'SUPPRESSED') c.suppressed++
   }
   return c
@@ -85,9 +94,9 @@ export default function DashboardScreen() {
 
             <View className="gap-3">
               <Metric label="Contactos" value={state.data.counts.total} />
-              <Metric label="Pendientes de revisión" value={state.data.counts.review_required} onPress={() => router.push('/review')} />
+              <Metric label="Pendientes de revisión" value={state.data.counts.reviewRequired} onPress={() => router.push('/review')} />
               <Metric label="Elegibles" value={state.data.counts.eligible} />
-              <Metric label="Consentimiento confirmado" value={state.data.counts.consent_confirmed} />
+              <Metric label="Consentimiento confirmado" value={state.data.counts.consentConfirmed} />
               <Metric label="Suprimidos" value={state.data.counts.suppressed} />
             </View>
 

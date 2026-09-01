@@ -1,4 +1,4 @@
-import type { AppConfig, Prisma } from '@prisma/client'
+import type { AppConfig } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { writeAudit } from './audit.model'
 
@@ -64,12 +64,12 @@ export async function updateConfig(patch: AppConfigPatch, actorId: string): Prom
   })
 }
 
-function pickPatchable(patch: AppConfigPatch): Prisma.AppConfigUpdateInput {
-  const result: Prisma.AppConfigUpdateInput = {}
+function pickPatchable(patch: AppConfigPatch): AppConfigPatch {
+  const result: AppConfigPatch = {}
   for (const key of patchableFields) {
-    if (patch[key] !== undefined) {
-      // biome-ignore lint/suspicious/noExplicitAny: propagación puntual controlada
-      ;(result as any)[key] = patch[key]
+    const value = patch[key]
+    if (value !== undefined) {
+      ;(result as Record<string, unknown>)[key] = value
     }
   }
   return result

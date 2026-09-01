@@ -262,6 +262,9 @@ importers:
       '@artist-outreach/config':
         specifier: workspace:*
         version: link:../config
+      '@artist-outreach/shared':
+        specifier: workspace:*
+        version: link:../shared
       clsx:
         specifier: ^2.1.1
         version: 2.1.1

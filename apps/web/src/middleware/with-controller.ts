@@ -1,13 +1,8 @@
 import { NextResponse } from 'next/server'
 import { z, ZodError } from 'zod'
 import { logger } from '@/lib/logger'
-import {
-  AuthClaims,
-  ConfigurationError,
-  ForbiddenError,
-  UnauthorizedError,
-  requireAdmin,
-} from './auth'
+import type { AuthClaims } from './auth'
+import { ConfigurationError, ForbiddenError, UnauthorizedError, requireAdmin } from './auth'
 
 export interface RouteContext<TParams = unknown> {
   auth?: AuthClaims
