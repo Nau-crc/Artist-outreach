@@ -168,7 +168,7 @@ export async function commitCsvImport(input: RunCsvInput, actorId: string): Prom
       params: {
         mapping: input.mapping,
         totalRows: results.length,
-      } as Prisma.InputJsonValue,
+      } as unknown as Prisma.InputJsonValue,
       status: 'RUNNING',
       triggeredBy: actorId,
     },
