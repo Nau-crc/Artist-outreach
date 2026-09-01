@@ -429,6 +429,10 @@ model AppConfig {
   hourlySendLimit                Int      @default(0) @map("hourly_send_limit")
   minIntervalSeconds             Int      @default(60) @map("min_interval_seconds")
   consentRequestCooldownDays     Int      @default(90) @map("consent_request_cooldown_days")
+  bounceRateThresholdPct         Float    @default(5.0) @map("bounce_rate_threshold_pct")
+  bounceRateMinSample            Int      @default(20) @map("bounce_rate_min_sample")
+  autoPausedAt                   DateTime? @map("auto_paused_at") @db.Timestamptz
+  autoPausedReason               String?  @map("auto_paused_reason")
   updatedAt                      DateTime @updatedAt @map("updated_at") @db.Timestamptz
   updatedBy                      String?  @map("updated_by") @db.Uuid
 

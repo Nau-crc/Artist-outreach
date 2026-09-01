@@ -75,7 +75,7 @@ describe('consent-requests.model (integration)', () => {
       expect(actions).toContain('contact:consent_requested')
     })
 
-    it('snapshot text_version incluye version + subject + hash', async () => {
+    it('snapshot text_version incluye version + subject + text + html completos', async () => {
       const { template, campaign, contact } = await seed()
       const r = await enqueueConsentRequest(
         { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
@@ -85,7 +85,7 @@ describe('consent-requests.model (integration)', () => {
       expect(snap.version).toBe(template.version)
       expect(snap.subject).toBe(template.subject)
       expect(snap.text).toBe(template.bodyText)
-      expect(snap.htmlHash).toBeTruthy()
+      expect(snap.html).toBe(template.bodyHtml)
     })
 
     it('rechaza si template está inactivo', async () => {

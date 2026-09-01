@@ -13,6 +13,8 @@ const patchableFields = [
   'hourlySendLimit',
   'minIntervalSeconds',
   'consentRequestCooldownDays',
+  'bounceRateThresholdPct',
+  'bounceRateMinSample',
 ] as const
 
 export type AppConfigPatch = Partial<Pick<AppConfig, (typeof patchableFields)[number]>>
@@ -81,6 +83,7 @@ function validateLimits(cfg: AppConfig): void {
     'hourlySendLimit',
     'minIntervalSeconds',
     'consentRequestCooldownDays',
+    'bounceRateMinSample',
   ]
   for (const key of nonNegatives) {
     const value = cfg[key] as number
@@ -88,9 +91,48 @@ function validateLimits(cfg: AppConfig): void {
       throw new InvalidConfigError(`${key} must be a non-negative integer`)
     }
   }
+  if (
+    typeof cfg.bounceRateThresholdPct !== 'number' ||
+    cfg.bounceRateThresholdPct < 0 ||
+    cfg.bounceRateThresholdPct > 100
+  ) {
+    throw new InvalidConfigError('bounceRateThresholdPct must be between 0 and 100')
+  }
   if (cfg.sendingEnabled && cfg.dailySendLimit === 0) {
     throw new InvalidConfigError('sendingEnabled requires dailySendLimit > 0')
   }
+}
+
+/**
+ * Auto-pausa el envío por umbral de rebotes. Escribe autoPausedAt +
+ * autoPausedReason y sendingEnabled=false en una única transacción.
+ * Idempotente: si ya está pausado, no reescribe.
+ */
+export async function autoPauseSending(reason: string): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    const current = await tx.appConfig.findUnique({ where: { id: CONFIG_ID } })
+    if (!current || !current.sendingEnabled) return
+    const after = await tx.appConfig.update({
+      where: { id: CONFIG_ID },
+      data: {
+        sendingEnabled: false,
+        autoPausedAt: new Date(),
+        autoPausedReason: reason,
+      },
+    })
+    await writeAudit(
+      {
+        actorId: null,
+        actorKind: 'SYSTEM',
+        entityType: 'app_config',
+        entityId: null,
+        action: 'auto_paused',
+        before: { sendingEnabled: current.sendingEnabled },
+        after: { sendingEnabled: after.sendingEnabled, reason },
+      },
+      tx,
+    )
+  })
 }
 
 function sendingChanged(before: AppConfig, after: AppConfig): boolean {

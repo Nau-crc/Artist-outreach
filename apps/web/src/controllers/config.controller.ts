@@ -11,6 +11,8 @@ export const AppConfigPatchSchema = z
     hourlySendLimit: z.number().int().min(0).optional(),
     minIntervalSeconds: z.number().int().min(0).optional(),
     consentRequestCooldownDays: z.number().int().min(0).optional(),
+    bounceRateThresholdPct: z.number().min(0).max(100).optional(),
+    bounceRateMinSample: z.number().int().min(0).optional(),
   })
   .strict()
 

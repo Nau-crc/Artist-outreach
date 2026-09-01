@@ -392,27 +392,39 @@ export async function processQueue(): Promise<WorkerReport> {
 // Helpers
 // ────────────────────────────────────────────────────────────────
 
+export interface TemplateSnapshot {
+  version: number
+  subject: string
+  text: string
+  html: string
+}
+
 function snapshotTextVersion(template: {
   version: number
   subject: string
   bodyText: string
   bodyHtml: string
 }): string {
-  // Snapshot compacto suficiente para auditar exactamente qué texto se
-  // usará al enviar (fase 6). Se congela en el momento de encolar y no
-  // cambia aunque se edite el template después.
-  return JSON.stringify({
+  // Snapshot completo del contenido del template al momento de encolar.
+  // Congelado — editar el template después no altera este snapshot.
+  // Sirve para: auditar qué se envió + rendering directo en el worker
+  // sin depender del template actual.
+  const snap: TemplateSnapshot = {
     version: template.version,
     subject: template.subject,
     text: template.bodyText,
-    htmlHash: hashString(template.bodyHtml),
-  })
+    html: template.bodyHtml,
+  }
+  return JSON.stringify(snap)
 }
 
-function hashString(s: string): string {
-  let h = 0
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0
+export function parseTemplateSnapshot(textVersion: string): TemplateSnapshot | null {
+  try {
+    const parsed = JSON.parse(textVersion) as Partial<TemplateSnapshot>
+    if (typeof parsed.version !== 'number' || typeof parsed.subject !== 'string') return null
+    if (typeof parsed.text !== 'string' || typeof parsed.html !== 'string') return null
+    return parsed as TemplateSnapshot
+  } catch {
+    return null
   }
-  return h.toString(16)
 }
