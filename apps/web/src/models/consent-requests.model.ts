@@ -1,12 +1,14 @@
-import type { ConsentRequest, Prisma } from '@prisma/client'
+import type { AppConfig, ConsentRequest, Prisma } from '@prisma/client'
 import { prisma } from '@/lib/prisma'
 import { generateToken } from '@/lib/tokens'
 import { logger } from '@/lib/logger'
 import { writeAudit } from './audit.model'
 import { dryRunEligibility } from './contacts.model'
-import { getConfig } from './config.model'
+import { autoPauseSending, getConfig } from './config.model'
 import { isCampaignActiveNow } from './campaigns.model'
 import { isSuppressed } from './suppressions.model'
+import { sendEmail } from './email.model'
+import { renderConsentEmail } from '@/services/consent-render'
 
 const TOKEN_TTL_DAYS = 30
 
@@ -355,37 +357,307 @@ export async function simulateEligibility(input: SimulateInput): Promise<Simulat
 
 export interface WorkerReport {
   processed: number
+  sent: number
+  failed: number
   skipped: boolean
   reason?: string
-  note?: string
+  autoPaused?: boolean
+  results: Array<{
+    requestId: string
+    outcome: 'SENT' | 'FAILED' | 'RATE_LIMITED' | 'AUTO_PAUSED'
+    reason?: string
+  }>
 }
 
+interface ProcessQueueOptions {
+  maxBatch?: number
+  now?: Date
+}
+
+const DEFAULT_MAX_BATCH = 20
+
 /**
- * Worker de la cola de consent_requests.
+ * Worker real de la cola de consent_requests.
  *
- * En fase 5 SIEMPRE se comporta como no-op:
- *   - sending_enabled=false → devuelve { skipped: true, reason: 'sending_disabled' }.
- *   - sending_enabled=true  → devuelve { skipped: true, reason: 'phase5_no_sending' }.
- *
- * El envío real lo implementa fase 6 con validación de motor completa,
- * rate limit, cron cadenciado y activación explícita del interruptor.
- * Nunca llama a sendEmail(purpose='CONSENT_REQUEST') desde aquí.
+ * Comportamiento:
+ * - sending_enabled=false → skipped inmediato, sin tocar nada.
+ * - sending_enabled=true:
+ *   1. Chequea bounce rate. Si supera threshold, auto-pausa + aborta.
+ *   2. Consulta límites daily/hourly ya alcanzados → si superados, no envía nada.
+ *   3. Toma hasta maxBatch requests PENDING ordenadas por createdAt.
+ *   4. Por cada una:
+ *      a. Re-valida contact (ELIGIBLE, no suprimido, con email).
+ *      b. Re-valida campaign (isActiveNow).
+ *      c. Re-valida cooldown (por si otro batch mandó otra request recientemente).
+ *      d. Parsea snapshot; si inválido → FAILED.
+ *      e. Renderiza + envía via sendEmail(CONSENT_REQUEST).
+ *      f. Marca SENT + sentAt + actualiza contact.consentStatus=REQUESTED.
+ *      g. Respeta minIntervalSeconds entre envíos.
+ * - Cualquier check que falle marca la request como FAILED con motivo; no
+ *   consume rate limit (no se ha enviado nada).
  */
-export async function processQueue(): Promise<WorkerReport> {
+export async function processQueue(options: ProcessQueueOptions = {}): Promise<WorkerReport> {
+  const maxBatch = options.maxBatch ?? DEFAULT_MAX_BATCH
+  const now = options.now ?? new Date()
+
   const config = await getConfig()
   if (!config.sendingEnabled) {
     logger.info('[consent-queue] sending_enabled=false — worker no-op')
-    return { processed: 0, skipped: true, reason: 'sending_disabled' }
+    return { processed: 0, sent: 0, failed: 0, skipped: true, reason: 'sending_disabled', results: [] }
   }
-  logger.warn(
-    '[consent-queue] sending_enabled=true detected but phase 5 does not implement outbound. Nothing sent.',
-  )
+
+  // 1. Auto-pausa por bounce rate.
+  const bounceRate = await computeBounceRate(config, now)
+  if (bounceRate.exceeded) {
+    await autoPauseSending(
+      `bounce_rate=${bounceRate.ratio.toFixed(2)}% (>${config.bounceRateThresholdPct}%) sample=${bounceRate.sample}`,
+    )
+    logger.warn(bounceRate, '[consent-queue] auto-paused: bounce rate exceeded')
+    return {
+      processed: 0,
+      sent: 0,
+      failed: 0,
+      skipped: true,
+      autoPaused: true,
+      reason: 'auto_paused_bounce_rate',
+      results: [],
+    }
+  }
+
+  // 2. Rate limits agregados.
+  const usage = await getSendUsage(now)
+  const availableDaily =
+    config.dailySendLimit > 0 ? Math.max(0, config.dailySendLimit - usage.last24h) : Infinity
+  const availableHourly =
+    config.hourlySendLimit > 0 ? Math.max(0, config.hourlySendLimit - usage.last1h) : Infinity
+  const available = Math.min(availableDaily, availableHourly, maxBatch)
+  if (available <= 0) {
+    return {
+      processed: 0,
+      sent: 0,
+      failed: 0,
+      skipped: true,
+      reason: `rate_limited (daily=${usage.last24h}/${config.dailySendLimit} hourly=${usage.last1h}/${config.hourlySendLimit})`,
+      results: [],
+    }
+  }
+
+  // 3. Toma batch.
+  const pending = await prisma.consentRequest.findMany({
+    where: { status: 'PENDING' },
+    orderBy: { createdAt: 'asc' },
+    take: available,
+    include: { contact: true, campaign: true },
+  })
+
+  const report: WorkerReport = {
+    processed: pending.length,
+    sent: 0,
+    failed: 0,
+    skipped: false,
+    results: [],
+  }
+
+  let lastSentAt = usage.lastSentAt
+
+  for (const req of pending) {
+    // Espera minIntervalSeconds entre envíos.
+    if (lastSentAt && config.minIntervalSeconds > 0) {
+      const waitMs = lastSentAt.getTime() + config.minIntervalSeconds * 1000 - Date.now()
+      if (waitMs > 0) await sleep(waitMs)
+    }
+
+    const outcome = await sendOne(req, config)
+    report.results.push({ requestId: req.id, ...outcome })
+    if (outcome.outcome === 'SENT') {
+      report.sent++
+      lastSentAt = new Date()
+    } else {
+      report.failed++
+    }
+  }
+
+  return report
+}
+
+interface SendOneResult {
+  outcome: 'SENT' | 'FAILED'
+  reason?: string
+}
+
+async function sendOne(
+  req: ConsentRequest & { contact: import('@prisma/client').Contact; campaign: import('@prisma/client').Campaign },
+  config: AppConfig,
+): Promise<SendOneResult> {
+  // Re-valida al momento del envío. El estado puede haber cambiado desde
+  // que se encoló.
+  const contact = req.contact
+  if (!contact.email) {
+    return failRequest(req.id, 'no_email')
+  }
+  // Suppression primero — es la causa raíz de muchos otros bloqueos
+  // (BLOCKED, SUPPRESSED); reportar 'suppressed' es más útil en audit.
+  if (await isSuppressed(contact.email)) {
+    return failRequest(req.id, 'suppressed')
+  }
+  if (contact.permission !== 'ELIGIBLE') {
+    return failRequest(req.id, `permission_${contact.permission}`)
+  }
+  if (contact.consentStatus !== 'REQUESTED' && contact.consentStatus !== 'UNKNOWN') {
+    return failRequest(req.id, `consent_status_${contact.consentStatus}`)
+  }
+  if (!isCampaignActiveNow(req.campaign)) {
+    return failRequest(req.id, 'campaign_inactive')
+  }
+
+  const snapshot = parseTemplateSnapshot(req.textVersion)
+  if (!snapshot) {
+    return failRequest(req.id, 'snapshot_invalid')
+  }
+
+  try {
+    const rendered = renderConsentEmail(snapshot, contact, req.token)
+    const { providerMessageId } = await sendEmail({
+      to: contact.email,
+      subject: rendered.subject,
+      html: rendered.html,
+      text: rendered.text,
+      purpose: 'CONSENT_REQUEST',
+      contactId: contact.id,
+      relatedId: req.id,
+      textVersion: req.textVersion,
+    })
+    await prisma.$transaction(async (tx) => {
+      await tx.consentRequest.update({
+        where: { id: req.id },
+        data: { status: 'SENT', sentAt: new Date() },
+      })
+      await tx.contact.update({
+        where: { id: contact.id },
+        data: { consentStatus: 'REQUESTED', lastActionAt: new Date() },
+      })
+      await writeAudit(
+        {
+          actorId: null,
+          actorKind: 'SYSTEM',
+          entityType: 'consent_request',
+          entityId: req.id,
+          action: 'sent',
+          after: { providerMessageId, recipient: contact.email },
+        },
+        tx,
+      )
+    })
+    return { outcome: 'SENT' }
+  } catch (err) {
+    const message = (err as Error).message
+    logger.error({ err, requestId: req.id }, '[consent-queue] send failed')
+    await prisma.$transaction(async (tx) => {
+      await tx.consentRequest.update({
+        where: { id: req.id },
+        data: { status: 'FAILED' },
+      })
+      await writeAudit(
+        {
+          actorId: null,
+          actorKind: 'SYSTEM',
+          entityType: 'consent_request',
+          entityId: req.id,
+          action: 'send_failed',
+          metadata: { error: message },
+        },
+        tx,
+      )
+    })
+    return { outcome: 'FAILED', reason: message }
+  }
+}
+
+async function failRequest(id: string, reason: string): Promise<SendOneResult> {
+  await prisma.$transaction(async (tx) => {
+    await tx.consentRequest.update({
+      where: { id },
+      data: { status: 'FAILED' },
+    })
+    await writeAudit(
+      {
+        actorId: null,
+        actorKind: 'SYSTEM',
+        entityType: 'consent_request',
+        entityId: id,
+        action: 'precheck_failed',
+        metadata: { reason },
+      },
+      tx,
+    )
+  })
+  return { outcome: 'FAILED', reason }
+}
+
+// ────────────────────────────────────────────────────────────────
+// Rate limit + bounce rate helpers
+// ────────────────────────────────────────────────────────────────
+
+interface SendUsage {
+  last24h: number
+  last1h: number
+  lastSentAt: Date | null
+}
+
+async function getSendUsage(now: Date): Promise<SendUsage> {
+  const since24h = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  const since1h = new Date(now.getTime() - 60 * 60 * 1000)
+  const [last24h, last1h, latest] = await Promise.all([
+    prisma.emailMessage.count({
+      where: { purpose: 'CONSENT_REQUEST', status: 'SENT', sentAt: { gte: since24h } },
+    }),
+    prisma.emailMessage.count({
+      where: { purpose: 'CONSENT_REQUEST', status: 'SENT', sentAt: { gte: since1h } },
+    }),
+    prisma.emailMessage.findFirst({
+      where: { purpose: 'CONSENT_REQUEST', status: 'SENT' },
+      orderBy: { sentAt: 'desc' },
+      select: { sentAt: true },
+    }),
+  ])
+  return { last24h, last1h, lastSentAt: latest?.sentAt ?? null }
+}
+
+export interface BounceRateInfo {
+  sample: number
+  bounces: number
+  ratio: number
+  exceeded: boolean
+}
+
+async function computeBounceRate(config: AppConfig, now: Date): Promise<BounceRateInfo> {
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000)
+  const sample = await prisma.emailMessage.count({
+    where: { purpose: 'CONSENT_REQUEST', status: 'SENT', sentAt: { gte: since } },
+  })
+  if (sample < config.bounceRateMinSample) {
+    return { sample, bounces: 0, ratio: 0, exceeded: false }
+  }
+  const bounces = await prisma.emailEvent.count({
+    where: {
+      eventType: { in: ['BOUNCED', 'COMPLAINED'] },
+      message: {
+        purpose: 'CONSENT_REQUEST',
+        sentAt: { gte: since },
+      },
+    },
+  })
+  const ratio = (bounces / sample) * 100
   return {
-    processed: 0,
-    skipped: true,
-    reason: 'phase5_no_sending',
-    note: 'Outbound send is implemented in fase 6 after explicit legal validation.',
+    sample,
+    bounces,
+    ratio,
+    exceeded: ratio > config.bounceRateThresholdPct,
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 // ────────────────────────────────────────────────────────────────

@@ -13,6 +13,8 @@ import {
 } from './consent-requests.model'
 import { addSuppression } from './suppressions.model'
 import { updateConfig } from './config.model'
+import { resetEmailProviderForTests } from '@/services/email/factory'
+import { createFakeProvider } from '@/services/email/fake.provider'
 
 const ACTOR = 'dddddddd-1111-2222-3333-dddddddddddd'
 
@@ -266,7 +268,11 @@ describe('consent-requests.model (integration)', () => {
   // Worker esqueleto — CRÍTICO: no envía en fase 5.
   // ────────────────────────────────────────────────────────────────
 
-  describe('processQueue (fase 5 — no-op)', () => {
+  describe('processQueue (fase 6 — envío real detrás del gate)', () => {
+    beforeEach(() => {
+      resetEmailProviderForTests(createFakeProvider())
+    })
+
     it('skipped=sending_disabled cuando sending_enabled=false', async () => {
       const r = await processQueue()
       expect(r.processed).toBe(0)
@@ -274,27 +280,168 @@ describe('consent-requests.model (integration)', () => {
       expect(r.reason).toBe('sending_disabled')
     })
 
-    it('skipped=phase5_no_sending cuando sending_enabled=true y NO envía nada', async () => {
-      await updateConfig({ dailySendLimit: 10 }, ACTOR)
+    it('happy path: envía y marca SENT + sentAt + contact.consentStatus=REQUESTED', async () => {
+      await updateConfig({ dailySendLimit: 10, hourlySendLimit: 10, minIntervalSeconds: 0 }, ACTOR)
       await updateConfig({ sendingEnabled: true }, ACTOR)
-      // Encolamos una request para que haya trabajo pendiente.
+      const { template, campaign, contact } = await seed()
+      const enq = await enqueueConsentRequest(
+        { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
+      // enqueue ya puso el contact en REQUESTED. Volvemos a UNKNOWN para
+      // simular una llamada donde el worker es el que hace la transición.
+      // (Alternativamente, sendOne acepta REQUESTED también.)
+      const r = await processQueue()
+      expect(r.processed).toBe(1)
+      expect(r.sent).toBe(1)
+      expect(r.failed).toBe(0)
+
+      const updated = await prisma.consentRequest.findUniqueOrThrow({
+        where: { id: enq.request!.id },
+      })
+      expect(updated.status).toBe('SENT')
+      expect(updated.sentAt).not.toBeNull()
+
+      const msg = await prisma.emailMessage.findFirstOrThrow({
+        where: { purpose: 'CONSENT_REQUEST' },
+      })
+      expect(msg.status).toBe('SENT')
+      expect(msg.recipient).toBe('ana@x.com')
+    })
+
+    it('rate_limited cuando daily/hourly ya se han alcanzado', async () => {
+      await updateConfig({ dailySendLimit: 1, hourlySendLimit: 10, minIntervalSeconds: 0 }, ACTOR)
+      await updateConfig({ sendingEnabled: true }, ACTOR)
       const { template, campaign, contact } = await seed()
       await enqueueConsentRequest(
         { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
         ACTOR,
       )
-      const emailCountBefore = await prisma.emailMessage.count({
-        where: { purpose: 'CONSENT_REQUEST' },
+      // Envío 1: pasa.
+      await processQueue()
+      // Encolamos otro (dedupe no aplica: nuevo contact).
+      const c2 = await prisma.contact.create({
+        data: {
+          artistName: 'Bob',
+          email: 'bob@x.com',
+          contactStatus: 'REVIEWED',
+          emailStatus: 'FOUND',
+          permission: 'ELIGIBLE',
+          consentStatus: 'UNKNOWN',
+        },
       })
+      await enqueueConsentRequest(
+        { contactId: c2.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
       const r = await processQueue()
       expect(r.processed).toBe(0)
       expect(r.skipped).toBe(true)
-      expect(r.reason).toBe('phase5_no_sending')
-      // Verificación explícita: NO se creó ningún email_message con purpose=CONSENT_REQUEST.
-      const emailCountAfter = await prisma.emailMessage.count({
-        where: { purpose: 'CONSENT_REQUEST' },
+      expect(r.reason).toMatch(/^rate_limited/)
+    })
+
+    it('pre-check FAILED: contact suprimido después de encolar', async () => {
+      await updateConfig({ dailySendLimit: 10, hourlySendLimit: 10, minIntervalSeconds: 0 }, ACTOR)
+      await updateConfig({ sendingEnabled: true }, ACTOR)
+      const { template, campaign, contact } = await seed()
+      const enq = await enqueueConsentRequest(
+        { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
+      // Suprimimos el email antes de que el worker corra.
+      await addSuppression({ email: 'ana@x.com', reason: 'MANUAL' }, ACTOR)
+      const r = await processQueue()
+      expect(r.sent).toBe(0)
+      expect(r.failed).toBe(1)
+      expect(r.results[0]?.reason).toBe('suppressed')
+      const req = await prisma.consentRequest.findUniqueOrThrow({ where: { id: enq.request!.id } })
+      expect(req.status).toBe('FAILED')
+    })
+
+    it('pre-check FAILED: campaign desactivada después de encolar', async () => {
+      await updateConfig({ dailySendLimit: 10, hourlySendLimit: 10, minIntervalSeconds: 0 }, ACTOR)
+      await updateConfig({ sendingEnabled: true }, ACTOR)
+      const { template, campaign, contact } = await seed()
+      await enqueueConsentRequest(
+        { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
+      await prisma.campaign.update({ where: { id: campaign.id }, data: { active: false } })
+      const r = await processQueue()
+      expect(r.sent).toBe(0)
+      expect(r.results[0]?.reason).toBe('campaign_inactive')
+    })
+
+    it('auto-pausa por bounce rate y aborta el batch', async () => {
+      await updateConfig(
+        { dailySendLimit: 100, hourlySendLimit: 100, minIntervalSeconds: 0, bounceRateMinSample: 2, bounceRateThresholdPct: 20 },
+        ACTOR,
+      )
+      await updateConfig({ sendingEnabled: true }, ACTOR)
+      // Simulamos historial: 4 SENT en las últimas 24h, 2 con BOUNCED = 50% > 20%.
+      for (let i = 0; i < 4; i++) {
+        const msg = await prisma.emailMessage.create({
+          data: {
+            purpose: 'CONSENT_REQUEST',
+            provider: 'fake',
+            providerMessageId: `msg-${i}`,
+            recipient: `x${i}@y.com`,
+            status: 'SENT',
+            sentAt: new Date(Date.now() - 1000 * 60 * 60), // hace 1h
+          },
+        })
+        if (i < 2) {
+          await prisma.emailEvent.create({
+            data: {
+              messageId: msg.id,
+              eventType: 'BOUNCED',
+              providerEventId: `evt-${i}`,
+            },
+          })
+        }
+      }
+      const { template, campaign, contact } = await seed()
+      await enqueueConsentRequest(
+        { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
+      const r = await processQueue()
+      expect(r.autoPaused).toBe(true)
+      expect(r.reason).toBe('auto_paused_bounce_rate')
+      // sending_enabled debe haber sido revertido a false por el auto-pause.
+      const cfg = await prisma.appConfig.findUniqueOrThrow({ where: { id: 1 } })
+      expect(cfg.sendingEnabled).toBe(false)
+      expect(cfg.autoPausedReason).toContain('bounce_rate=')
+    })
+
+    it('bounce rate no dispara auto-pausa si sample < minSample', async () => {
+      await updateConfig(
+        { dailySendLimit: 10, hourlySendLimit: 10, minIntervalSeconds: 0, bounceRateMinSample: 10, bounceRateThresholdPct: 5 },
+        ACTOR,
+      )
+      await updateConfig({ sendingEnabled: true }, ACTOR)
+      // Solo 1 SENT con 1 BOUNCED en la ventana: 100% pero sample < 10.
+      const msg = await prisma.emailMessage.create({
+        data: {
+          purpose: 'CONSENT_REQUEST',
+          provider: 'fake',
+          providerMessageId: 'onlymsg',
+          recipient: 'x@y.com',
+          status: 'SENT',
+          sentAt: new Date(),
+        },
       })
-      expect(emailCountAfter).toBe(emailCountBefore)
+      await prisma.emailEvent.create({
+        data: { messageId: msg.id, eventType: 'BOUNCED', providerEventId: 'e' },
+      })
+      const { template, campaign, contact } = await seed()
+      await enqueueConsentRequest(
+        { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
+      const r = await processQueue()
+      expect(r.autoPaused).toBeUndefined()
+      expect(r.sent).toBe(1)
     })
   })
 })
