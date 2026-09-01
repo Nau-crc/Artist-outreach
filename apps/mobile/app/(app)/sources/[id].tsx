@@ -291,6 +291,7 @@ export default function SourceDetailScreen() {
                         Abortada: {extract.report.crawl.abortReason}
                       </Text>
                     )}
+                    <VisitedPagesList pages={extract.report.crawl.pages} />
                     <View className="flex-row gap-2 pt-2">
                       <Button size="sm" variant="secondary" onPress={() => router.push('/review')}>
                         Ver cola de revisión
@@ -316,6 +317,57 @@ function SummaryRow({ label, value }: { label: string; value: number }) {
     <View className="flex-row justify-between">
       <Text className="text-sm text-text-secondary">{label}</Text>
       <Text className="text-sm font-semibold text-text-primary">{value}</Text>
+    </View>
+  )
+}
+
+function statusLabel(status: number | 'skipped_robots' | 'error'): { text: string; tone: string } {
+  if (status === 'skipped_robots') return { text: 'robots.txt', tone: 'text-status-reviewRequired' }
+  if (status === 'error') return { text: 'error', tone: 'text-status-notEligible' }
+  if (typeof status === 'number') {
+    if (status >= 200 && status < 300) return { text: `${status}`, tone: 'text-status-eligible' }
+    return { text: `${status}`, tone: 'text-status-notEligible' }
+  }
+  return { text: String(status), tone: 'text-text-muted' }
+}
+
+function VisitedPagesList({
+  pages,
+}: {
+  pages: Array<{ url: string; depth: number; status: number | 'skipped_robots' | 'error'; emailsFound: number; error?: string }>
+}) {
+  const [open, setOpen] = useState(false)
+  if (pages.length === 0) return null
+  return (
+    <View className="mt-2 gap-2">
+      <Button size="sm" variant="ghost" onPress={() => setOpen((v) => !v)}>
+        {open ? 'Ocultar páginas visitadas' : `Ver páginas visitadas (${pages.length})`}
+      </Button>
+      {open && (
+        <View className="gap-1 p-2 rounded-md bg-surface-base border border-border-subtle">
+          {pages.map((p) => {
+            const s = statusLabel(p.status)
+            return (
+              <View key={`${p.url}-${p.depth}`} className="gap-0.5 py-1 border-b border-border-subtle">
+                <View className="flex-row justify-between gap-2">
+                  <Text className={`text-xs font-mono ${s.tone}`}>{s.text}</Text>
+                  <Text className="text-xs text-text-muted">
+                    prof {p.depth} · {p.emailsFound} email{p.emailsFound === 1 ? '' : 's'}
+                  </Text>
+                </View>
+                <Text className="text-xs font-mono text-text-primary" numberOfLines={2} selectable>
+                  {p.url}
+                </Text>
+                {p.error && (
+                  <Text className="text-xs text-status-notEligible" numberOfLines={2}>
+                    {p.error}
+                  </Text>
+                )}
+              </View>
+            )
+          })}
+        </View>
+      )}
     </View>
   )
 }

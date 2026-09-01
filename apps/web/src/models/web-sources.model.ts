@@ -280,6 +280,20 @@ export async function extractFromWebSource(
       results: crawl.results,
     })
 
+    // Persistimos el detalle del crawl (URLs visitadas + status + emails
+    // por página) para poder consultarlo después desde /audit o Studio.
+    const currentParams = (run.params ?? {}) as Record<string, unknown>
+    const updatedParams: Record<string, unknown> = {
+      ...currentParams,
+      crawlPages: crawl.pages,
+      crawlSummary: {
+        visitedCount: crawl.visitedCount,
+        emailsCount: crawl.emailsCount,
+        aborted: crawl.aborted,
+        ...(crawl.abortReason ? { abortReason: crawl.abortReason } : {}),
+      },
+    }
+
     await prisma.discoveryRun.update({
       where: { id: run.id },
       data: {
@@ -287,6 +301,7 @@ export async function extractFromWebSource(
         finishedAt: new Date(),
         resultsCount: persisted.resultsCount,
         newContactsCount: persisted.newContactsCount,
+        params: updatedParams as unknown as Prisma.InputJsonValue,
         ...(crawl.abortReason ? { error: crawl.abortReason } : {}),
       },
     })
