@@ -70,12 +70,12 @@ const DEV_ADMIN_ID = '00000000-0000-0000-0000-000000000001'
 /**
  * Bypass de auth para desarrollo local.
  * Solo activo si:
- *   - NODE_ENV !== 'production'
+ *   - NODE_ENV === 'development' (no 'production' ni 'test')
  *   - DEV_BYPASS_AUTH === 'true'
- * En cualquier otro caso se ignora — imposible activarlo en producción.
+ * En cualquier otro caso se ignora — imposible activarlo en producción o en tests.
  */
 function tryDevBypass(): AuthClaims | null {
-  if (process.env.NODE_ENV === 'production') return null
+  if (process.env.NODE_ENV !== 'development') return null
   if (process.env.DEV_BYPASS_AUTH !== 'true') return null
   return { userId: process.env.DEV_ADMIN_ID ?? DEV_ADMIN_ID, role: 'admin' }
 }

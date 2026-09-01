@@ -103,6 +103,12 @@ describe('DEV_BYPASS_AUTH', () => {
     expect(() => requireAdmin(reqWith({}), SECRET)).toThrow(UnauthorizedError)
   })
 
+  it('is ignored in test env even with flag set', () => {
+    process.env.NODE_ENV = 'test'
+    process.env.DEV_BYPASS_AUTH = 'true'
+    expect(() => requireAdmin(reqWith({}), SECRET)).toThrow(UnauthorizedError)
+  })
+
   it('is ignored when flag is not exactly "true"', () => {
     process.env.NODE_ENV = 'development'
     process.env.DEV_BYPASS_AUTH = '1'
