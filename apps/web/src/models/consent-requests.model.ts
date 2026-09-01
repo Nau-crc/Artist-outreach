@@ -6,7 +6,7 @@ import { writeAudit } from './audit.model'
 import { dryRunEligibility } from './contacts.model'
 import { autoPauseSending, getConfig } from './config.model'
 import { isCampaignActiveNow } from './campaigns.model'
-import { isSuppressed } from './suppressions.model'
+import { addSuppression, isSuppressed } from './suppressions.model'
 import { sendEmail } from './email.model'
 import { renderConsentEmail } from '@/services/consent-render'
 
@@ -354,6 +354,131 @@ export async function simulateEligibility(input: SimulateInput): Promise<Simulat
 // ────────────────────────────────────────────────────────────────
 // Worker skeleton — respeta sending_enabled=false
 // ────────────────────────────────────────────────────────────────
+
+// ────────────────────────────────────────────────────────────────
+// Respuesta del receptor: accept / decline
+// ────────────────────────────────────────────────────────────────
+
+export interface ConsentResponseResult {
+  status: 'accepted' | 'declined' | 'already_answered' | 'invalid'
+  contactId?: string
+  artistName?: string
+}
+
+/**
+ * El receptor pulsa el enlace de confirmación del email. Crea el
+ * Consent(CONFIRMED, source=EMAIL_LINK, textVersion snapshot),
+ * marca la request como SENT (si no lo estaba) y contact.consentStatus=CONFIRMED.
+ * Idempotente.
+ */
+export async function acceptConsentRequest(token: string): Promise<ConsentResponseResult> {
+  const req = await prisma.consentRequest.findUnique({
+    where: { token },
+    include: { contact: true },
+  })
+  if (!req) return { status: 'invalid' }
+  if (req.tokenExpiresAt && req.tokenExpiresAt < new Date()) return { status: 'invalid' }
+
+  if (req.contact.consentStatus === 'CONFIRMED') {
+    return { status: 'already_answered', contactId: req.contactId, artistName: req.contact.artistName }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.consent.create({
+      data: {
+        contactId: req.contactId,
+        purpose: 'NEWSLETTER',
+        status: 'CONFIRMED',
+        source: 'EMAIL_LINK',
+        textVersion: req.textVersion,
+        evidence: {
+          consentRequestId: req.id,
+          answeredAt: new Date().toISOString(),
+        } as Prisma.InputJsonValue,
+      },
+    })
+    await tx.contact.update({
+      where: { id: req.contactId },
+      data: { consentStatus: 'CONFIRMED', lastActionAt: new Date() },
+    })
+    await writeAudit(
+      {
+        actorId: null,
+        actorKind: 'PUBLIC',
+        entityType: 'consent_request',
+        entityId: req.id,
+        action: 'accepted',
+        after: { consentStatus: 'CONFIRMED' },
+      },
+      tx,
+    )
+  })
+
+  return { status: 'accepted', contactId: req.contactId, artistName: req.contact.artistName }
+}
+
+/**
+ * El receptor pulsa el link de rechazo. Crea Consent(WITHDRAWN),
+ * añade el email a la lista de supresión, marca contact.consentStatus=WITHDRAWN.
+ * Idempotente.
+ */
+export async function declineConsentRequest(token: string): Promise<ConsentResponseResult> {
+  const req = await prisma.consentRequest.findUnique({
+    where: { token },
+    include: { contact: true },
+  })
+  if (!req) return { status: 'invalid' }
+  // El decline es una acción destructiva a favor del receptor — no
+  // expira. Incluso con token caducado, dejamos que se pueda rechazar.
+
+  if (req.contact.consentStatus === 'WITHDRAWN' || req.contact.contactStatus === 'SUPPRESSED') {
+    return { status: 'already_answered', contactId: req.contactId, artistName: req.contact.artistName }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.consent.create({
+      data: {
+        contactId: req.contactId,
+        purpose: 'NEWSLETTER',
+        status: 'WITHDRAWN',
+        source: 'EMAIL_LINK',
+        textVersion: req.textVersion,
+        withdrawnAt: new Date(),
+        evidence: {
+          consentRequestId: req.id,
+          answeredAt: new Date().toISOString(),
+          reason: 'declined_from_email',
+        } as Prisma.InputJsonValue,
+      },
+    })
+    await tx.contact.update({
+      where: { id: req.contactId },
+      data: { consentStatus: 'WITHDRAWN', lastActionAt: new Date() },
+    })
+    await writeAudit(
+      {
+        actorId: null,
+        actorKind: 'PUBLIC',
+        entityType: 'consent_request',
+        entityId: req.id,
+        action: 'declined',
+        after: { consentStatus: 'WITHDRAWN' },
+      },
+      tx,
+    )
+  })
+
+  // Suppress fuera de la tx — addSuppression tiene su propia transacción y
+  // cascadea el contact a SUPPRESSED/BLOCKED.
+  if (req.contact.email) {
+    await addSuppression(
+      { email: req.contact.email, reason: 'WITHDRAWN' },
+      '00000000-0000-0000-0000-000000000000',
+    )
+  }
+
+  return { status: 'declined', contactId: req.contactId, artistName: req.contact.artistName }
+}
 
 export interface WorkerReport {
   processed: number

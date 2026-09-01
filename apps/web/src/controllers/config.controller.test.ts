@@ -25,6 +25,10 @@ const FAKE_CONFIG: AppConfig = {
   hourlySendLimit: 0,
   minIntervalSeconds: 60,
   consentRequestCooldownDays: 90,
+  bounceRateThresholdPct: 5.0,
+  bounceRateMinSample: 20,
+  autoPausedAt: null,
+  autoPausedReason: null,
   updatedAt: new Date(),
   updatedBy: null,
 }

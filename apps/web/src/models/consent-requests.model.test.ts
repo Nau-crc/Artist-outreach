@@ -5,7 +5,9 @@ import {
   CooldownActiveError,
   DuplicateRequestError,
   TemplateInactiveError,
+  acceptConsentRequest,
   cancelConsentRequest,
+  declineConsentRequest,
   enqueueConsentRequest,
   listConsentRequests,
   processQueue,
@@ -412,6 +414,66 @@ describe('consent-requests.model (integration)', () => {
       const cfg = await prisma.appConfig.findUniqueOrThrow({ where: { id: 1 } })
       expect(cfg.sendingEnabled).toBe(false)
       expect(cfg.autoPausedReason).toContain('bounce_rate=')
+    })
+
+    it('accept crea Consent CONFIRMED + actualiza contact + audit', async () => {
+      const { template, campaign, contact } = await seed()
+      const enq = await enqueueConsentRequest(
+        { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
+      const r = await acceptConsentRequest(enq.request!.token)
+      expect(r.status).toBe('accepted')
+      expect(r.contactId).toBe(contact.id)
+      const c = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })
+      expect(c.consentStatus).toBe('CONFIRMED')
+      const consent = await prisma.consent.findFirstOrThrow({ where: { contactId: contact.id } })
+      expect(consent.status).toBe('CONFIRMED')
+      expect(consent.source).toBe('EMAIL_LINK')
+      expect(consent.textVersion).toBe(enq.request!.textVersion)
+    })
+
+    it('accept es idempotente (already_answered la segunda vez)', async () => {
+      const { template, campaign, contact } = await seed()
+      const enq = await enqueueConsentRequest(
+        { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
+      await acceptConsentRequest(enq.request!.token)
+      const r = await acceptConsentRequest(enq.request!.token)
+      expect(r.status).toBe('already_answered')
+      expect(await prisma.consent.count()).toBe(1)
+    })
+
+    it('accept invalid con token desconocido', async () => {
+      const r = await acceptConsentRequest('tok-que-no-existe-000000')
+      expect(r.status).toBe('invalid')
+    })
+
+    it('decline crea Consent WITHDRAWN + suprime email + cascadea', async () => {
+      const { template, campaign, contact } = await seed()
+      const enq = await enqueueConsentRequest(
+        { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
+      const r = await declineConsentRequest(enq.request!.token)
+      expect(r.status).toBe('declined')
+      const supp = await prisma.suppression.findFirstOrThrow({ where: { email: 'ana@x.com' } })
+      expect(supp.reason).toBe('WITHDRAWN')
+      const c = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })
+      expect(c.consentStatus).toBe('WITHDRAWN')
+      expect(c.contactStatus).toBe('SUPPRESSED')
+    })
+
+    it('decline es idempotente', async () => {
+      const { template, campaign, contact } = await seed()
+      const enq = await enqueueConsentRequest(
+        { contactId: contact.id, campaignId: campaign.id, templateId: template.id },
+        ACTOR,
+      )
+      await declineConsentRequest(enq.request!.token)
+      const r = await declineConsentRequest(enq.request!.token)
+      expect(r.status).toBe('already_answered')
     })
 
     it('bounce rate no dispara auto-pausa si sample < minSample', async () => {
