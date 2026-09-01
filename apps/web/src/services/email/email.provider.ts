@@ -1,28 +1,35 @@
-// Interface del servicio de email. Implementaciones concretas en fase 4.
-// No se llama desde ninguna parte del código en fase 1.
+import type { EmailPurpose } from '@prisma/client'
 
 export interface SendEmailParams {
   to: string
   subject: string
   html: string
   text: string
-  purpose: 'CONSENT_REQUEST' | 'DOUBLE_OPTIN' | 'NEWSLETTER' | 'SYSTEM'
+  purpose: EmailPurpose
+  contactId?: string
   relatedId?: string
+  templateId?: string
+  textVersion?: string
+  from?: string
 }
 
 export interface SendEmailResult {
   providerMessageId: string
+  provider: string
 }
 
-export interface EmailEvent {
+export interface EmailEventDto {
   type: 'SENT' | 'DELIVERED' | 'BOUNCED' | 'COMPLAINED' | 'OPENED' | 'CLICKED'
   providerMessageId: string
   providerEventId: string
   occurredAt: Date
   payload: unknown
+  bounceType?: 'HARD' | 'SOFT' | 'UNKNOWN'
 }
 
 export interface EmailProvider {
+  readonly name: string
   send(params: SendEmailParams): Promise<SendEmailResult>
-  parseWebhook(headers: Headers, body: unknown): EmailEvent[]
+  parseWebhook(headers: Headers, body: unknown, rawBody?: string): EmailEventDto[]
+  verifyWebhookSignature?(headers: Headers, rawBody: string): boolean
 }
