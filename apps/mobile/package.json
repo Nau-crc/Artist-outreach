@@ -17,6 +17,7 @@
     "@artist-outreach/config": "workspace:*",
     "@artist-outreach/shared": "workspace:*",
     "@artist-outreach/ui": "workspace:*",
+    "@expo/log-box": "~57.0.4",
     "@expo/metro-runtime": "~57.0.14",
     "@supabase/supabase-js": "^2.112.4",
     "expo": "57.0.18",
