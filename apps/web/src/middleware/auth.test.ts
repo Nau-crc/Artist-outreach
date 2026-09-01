@@ -79,18 +79,18 @@ describe('requireAdmin', () => {
 })
 
 describe('DEV_BYPASS_AUTH', () => {
-  const originalNodeEnv = process.env.NODE_ENV
+  const originalNodeEnv = (process.env as Record<string, string | undefined>).NODE_ENV
   const originalBypass = process.env.DEV_BYPASS_AUTH
 
   afterEach(() => {
-    if (originalNodeEnv === undefined) delete process.env.NODE_ENV
-    else process.env.NODE_ENV = originalNodeEnv
+    if (originalNodeEnv === undefined) delete (process.env as Record<string, string | undefined>).NODE_ENV
+    else (process.env as Record<string, string | undefined>).NODE_ENV = originalNodeEnv
     if (originalBypass === undefined) delete process.env.DEV_BYPASS_AUTH
     else process.env.DEV_BYPASS_AUTH = originalBypass
   })
 
   it('injects admin claims when flag is set in non-production', () => {
-    process.env.NODE_ENV = 'development'
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development'
     process.env.DEV_BYPASS_AUTH = 'true'
     const claims = requireAdmin(reqWith({}), SECRET)
     expect(claims.role).toBe('admin')
@@ -98,19 +98,19 @@ describe('DEV_BYPASS_AUTH', () => {
   })
 
   it('is ignored in production even with flag set', () => {
-    process.env.NODE_ENV = 'production'
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'production'
     process.env.DEV_BYPASS_AUTH = 'true'
     expect(() => requireAdmin(reqWith({}), SECRET)).toThrow(UnauthorizedError)
   })
 
   it('is ignored in test env even with flag set', () => {
-    process.env.NODE_ENV = 'test'
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'test'
     process.env.DEV_BYPASS_AUTH = 'true'
     expect(() => requireAdmin(reqWith({}), SECRET)).toThrow(UnauthorizedError)
   })
 
   it('is ignored when flag is not exactly "true"', () => {
-    process.env.NODE_ENV = 'development'
+    (process.env as Record<string, string | undefined>).NODE_ENV = 'development'
     process.env.DEV_BYPASS_AUTH = '1'
     expect(() => requireAdmin(reqWith({}), SECRET)).toThrow(UnauthorizedError)
   })
