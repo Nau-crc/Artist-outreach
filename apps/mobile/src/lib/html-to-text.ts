@@ -10,7 +10,17 @@
 export function htmlToPlainText(html: string): string {
   if (!html) return ''
   let s = html
-  // Preservar variables — sustituir antes de strip.
+  // Preservar CTAs y links de acción con "Label: variable" — más legible
+  // en clientes de email que solo aceptan texto plano.
+  s = s.replace(
+    /<a[^>]*data-variable="([^"]+)"[^>]*data-label="([^"]+)"[^>]*>[^<]*<\/a>/gi,
+    (_m, variable, label) => `${label}: ${variable}`,
+  )
+  s = s.replace(
+    /<a[^>]*data-label="([^"]+)"[^>]*data-variable="([^"]+)"[^>]*>[^<]*<\/a>/gi,
+    (_m, label, variable) => `${label}: ${variable}`,
+  )
+  // Variable inline (span pill).
   s = s.replace(/<span[^>]*data-variable="([^"]+)"[^>]*>[^<]*<\/span>/gi, ' $1 ')
   // Listas.
   s = s.replace(/<li[^>]*>/gi, '\n- ').replace(/<\/li>/gi, '')

@@ -21,4 +21,16 @@ describe('htmlToPlainText', () => {
     expect(htmlToPlainText(html)).toContain('- Uno')
     expect(htmlToPlainText(html)).toContain('- Dos')
   })
+
+  it('renders CTA links as "Label: variable"', () => {
+    const html =
+      '<p><a class="tpl-cta" data-variable="{{ confirmUrl }}" data-label="Confirmar suscripción" href="{{ confirmUrl }}">Confirmar suscripción</a></p>'
+    expect(htmlToPlainText(html)).toContain('Confirmar suscripción: {{ confirmUrl }}')
+  })
+
+  it('renders unsubscribe link as "Label: variable"', () => {
+    const html =
+      '<p><a class="tpl-unsub" data-label="Darse de baja" data-variable="{{ unsubscribeUrl }}" href="{{ unsubscribeUrl }}">Darse de baja</a></p>'
+    expect(htmlToPlainText(html)).toContain('Darse de baja: {{ unsubscribeUrl }}')
+  })
 })

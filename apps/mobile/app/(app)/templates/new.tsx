@@ -12,7 +12,15 @@ import { RichTextEditor } from '@/components/RichTextEditor'
 import { VariableChips, appendVariable } from '@/components/VariableChips'
 import { PreviewRenderer } from '@/components/PreviewRenderer'
 
-const DEFAULT_HTML = `<p>Hola <span class="tpl-var" data-variable="{{ artistName }}">{{ artistName }}</span>,</p><p>Somos [nombre del proyecto] y estamos creando una newsletter para artistas centrada en comunicación. Enviamos contenidos prácticos, breves y periódicos.</p><p>Si te interesa recibirla, confirma tu suscripción aquí: <span class="tpl-var" data-variable="{{ confirmUrl }}">{{ confirmUrl }}</span></p><p>Si prefieres que no volvamos a escribirte, puedes ignorar este correo.</p><p>Gracias.</p>`
+const DEFAULT_HTML = `
+<p>Hola <span class="tpl-var" data-variable="{{ artistName }}">{{ artistName }}</span>,</p>
+<p>Somos [nombre del proyecto] y estamos creando una newsletter para artistas centrada en comunicación. Enviamos contenidos prácticos, breves y periódicos.</p>
+<p>Si te interesa recibirla, pulsa el botón:</p>
+<p style="text-align:center;margin:16px 0"><a class="tpl-cta" data-variable="{{ confirmUrl }}" data-label="Confirmar suscripción" href="{{ confirmUrl }}">Confirmar suscripción</a></p>
+<p>Si prefieres que no volvamos a escribirte, puedes ignorar este correo.</p>
+<p>Gracias.</p>
+<p style="text-align:center;margin-top:16px"><a class="tpl-unsub" data-variable="{{ unsubscribeUrl }}" data-label="Darse de baja" href="{{ unsubscribeUrl }}">Darse de baja</a></p>
+`.trim()
 
 export default function NewTemplateScreen() {
   const router = useRouter()
