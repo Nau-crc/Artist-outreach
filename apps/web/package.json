@@ -19,6 +19,7 @@
     "@artist-outreach/ui": "workspace:*",
     "@prisma/client": "6.19.3",
     "clsx": "^2.1.1",
+    "csv-parse": "^5.5.6",
     "jsonwebtoken": "^9.0.2",
     "next": "16.3.3",
     "pino": "^9.5.0",

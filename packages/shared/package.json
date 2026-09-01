@@ -9,7 +9,8 @@
     ".": "./src/index.ts",
     "./enums": "./src/enums/index.ts",
     "./schemas": "./src/schemas/index.ts",
-    "./value-objects": "./src/value-objects/index.ts"
+    "./value-objects": "./src/value-objects/index.ts",
+    "./discovery": "./src/discovery/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
