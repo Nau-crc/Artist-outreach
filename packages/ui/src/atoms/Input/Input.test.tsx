@@ -24,4 +24,11 @@ describe('Input (web)', () => {
     render(<Input value="" onChange={() => {}} disabled testID="in" />)
     expect(screen.getByTestId('in')).toBeDisabled()
   })
+
+  it('renders a textarea when multiline is true', () => {
+    render(<Input value="a\nb\nc" onChange={() => {}} multiline rows={8} testID="in" />)
+    const el = screen.getByTestId('in')
+    expect(el.tagName).toBe('TEXTAREA')
+    expect(el).toHaveAttribute('rows', '8')
+  })
 })

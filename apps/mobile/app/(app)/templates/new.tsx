@@ -1,28 +1,39 @@
 import { useRouter } from 'expo-router'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, ScrollView, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Button, Input } from '@artist-outreach/ui/atoms'
-import { FormField } from '@artist-outreach/ui/molecules'
+import { Card, FormField } from '@artist-outreach/ui/molecules'
 import { AppHeader } from '@artist-outreach/ui/organisms'
 import { api, ApiError } from '@/lib/api'
+import { fillPreviewVars, textToHtml } from '@/lib/text-to-html'
+
+const DEFAULT_BODY = `Hola {{ artistName }},
+
+Somos [nombre del proyecto] y estamos creando una newsletter para artistas centrada en comunicación. Enviamos contenidos prácticos, breves y periódicos.
+
+Si te interesa recibirla, confirma tu suscripción aquí:
+{{ confirmUrl }}
+
+Si prefieres que no volvamos a escribirte, puedes ignorar este correo.
+
+Gracias.`
 
 export default function NewTemplateScreen() {
   const router = useRouter()
   const [name, setName] = useState('')
   const [subject, setSubject] = useState('Hola {{ artistName }}')
-  const [bodyText, setBodyText] = useState(
-    'Hola {{ artistName }},\n\nSomos ... y estamos preparando una newsletter para artistas...\n\nSi te interesa recibirla, confirma aquí: {{ confirmUrl }}\n\nSi no te interesa, ignora este mensaje.',
-  )
-  const [bodyHtml, setBodyHtml] = useState(
-    '<p>Hola {{ artistName }},</p><p>Somos... y estamos preparando una newsletter para artistas...</p><p><a href="{{ confirmUrl }}">Confirmar interés</a></p>',
-  )
+  const [bodyText, setBodyText] = useState(DEFAULT_BODY)
   const [saving, setSaving] = useState(false)
 
+  const previewSubject = useMemo(() => fillPreviewVars(subject), [subject])
+  const previewText = useMemo(() => fillPreviewVars(bodyText), [bodyText])
+
   async function save() {
-    if (!name.trim() || !subject.trim() || !bodyText.trim() || !bodyHtml.trim()) return
+    if (!name.trim() || !subject.trim() || !bodyText.trim()) return
     setSaving(true)
     try {
+      const bodyHtml = textToHtml(bodyText)
       const t = await api.createTemplate({ name, subject, bodyText, bodyHtml })
       router.replace(`/templates/${t.id}`)
     } catch (err) {
@@ -45,18 +56,30 @@ export default function NewTemplateScreen() {
       />
 
       <ScrollView contentContainerClassName="p-4 gap-4">
-        <FormField label="Nombre" required>
+        <FormField label="Nombre interno" required hint="Solo se ve en el panel — no aparece en el email.">
           <Input value={name} onChange={setName} placeholder="Solicitud v1" />
         </FormField>
-        <FormField label="Asunto" required hint="Usa {{ artistName }} para personalizar">
+        <FormField label="Asunto" required hint="Puedes usar {{ artistName }}.">
           <Input value={subject} onChange={setSubject} />
         </FormField>
-        <FormField label="Cuerpo texto plano" required>
-          <Input value={bodyText} onChange={setBodyText} />
+        <FormField
+          label="Cuerpo del mensaje"
+          required
+          hint="Escribe en texto normal. Deja una línea en blanco para separar párrafos. El HTML se genera solo."
+        >
+          <Input value={bodyText} onChange={setBodyText} multiline rows={14} />
         </FormField>
-        <FormField label="Cuerpo HTML" required hint="Se snapshotea al encolar. Editar después no altera solicitudes pasadas.">
-          <Input value={bodyHtml} onChange={setBodyHtml} />
-        </FormField>
+
+        <Card variant="muted">
+          <Text className="text-xs text-text-muted uppercase mb-2">Vista previa</Text>
+          <Text className="text-base font-semibold text-text-primary mb-3">{previewSubject}</Text>
+          {previewText.split(/\n{2,}/).map((p, i) => (
+            <Text key={i} className="text-sm text-text-primary mb-3 leading-6">
+              {p}
+            </Text>
+          ))}
+        </Card>
+
         <Button onPress={save} disabled={saving || !name.trim()} testID="save">
           {saving ? 'Guardando…' : 'Crear plantilla'}
         </Button>

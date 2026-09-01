@@ -6,5 +6,7 @@ export interface InputProps {
   type?: 'text' | 'email' | 'url' | 'search'
   autoFocus?: boolean
   invalid?: boolean
+  multiline?: boolean
+  rows?: number
   testID?: string
 }

@@ -1,27 +1,23 @@
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, Alert, ScrollView, Switch, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Button, Input, Badge } from '@artist-outreach/ui/atoms'
 import { Card, FormField } from '@artist-outreach/ui/molecules'
 import { AppHeader } from '@artist-outreach/ui/organisms'
 import { api, ApiError, type Template } from '@/lib/api'
-
-type PreviewState =
-  | { kind: 'idle' }
-  | { kind: 'loading' }
-  | { kind: 'ok'; subject: string; text: string; html: string; version: number }
-  | { kind: 'error'; message: string }
+import { fillPreviewVars, textToHtml } from '@/lib/text-to-html'
 
 export default function TemplateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
   const [t, setT] = useState<Template | null>(null)
-  const [draft, setDraft] = useState<Partial<Template>>({})
+  const [subjectDraft, setSubjectDraft] = useState<string | null>(null)
+  const [textDraft, setTextDraft] = useState<string | null>(null)
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [preview, setPreview] = useState<PreviewState>({ kind: 'idle' })
 
   async function load() {
     setLoading(true)
@@ -29,7 +25,9 @@ export default function TemplateDetailScreen() {
     try {
       const template = await api.getTemplate(id)
       setT(template)
-      setDraft({})
+      setSubjectDraft(null)
+      setTextDraft(null)
+      setNameDraft(null)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err))
     } finally {
@@ -41,13 +39,37 @@ export default function TemplateDetailScreen() {
     load()
   }, [id])
 
+  const currentSubject = subjectDraft ?? t?.subject ?? ''
+  const currentText = textDraft ?? t?.bodyText ?? ''
+  const currentName = nameDraft ?? t?.name ?? ''
+
+  const previewSubject = useMemo(() => fillPreviewVars(currentSubject), [currentSubject])
+  const previewParagraphs = useMemo(
+    () => fillPreviewVars(currentText).split(/\n{2,}/),
+    [currentText],
+  )
+
+  const dirty =
+    (nameDraft !== null && nameDraft !== t?.name) ||
+    (subjectDraft !== null && subjectDraft !== t?.subject) ||
+    (textDraft !== null && textDraft !== t?.bodyText)
+
   async function save() {
-    if (!t || Object.keys(draft).length === 0) return
+    if (!t || !dirty) return
     setSaving(true)
     try {
-      const updated = await api.updateTemplate(t.id, draft)
+      const patch: Record<string, string> = {}
+      if (nameDraft !== null && nameDraft !== t.name) patch.name = nameDraft
+      if (subjectDraft !== null && subjectDraft !== t.subject) patch.subject = subjectDraft
+      if (textDraft !== null && textDraft !== t.bodyText) {
+        patch.bodyText = textDraft
+        patch.bodyHtml = textToHtml(textDraft)
+      }
+      const updated = await api.updateTemplate(t.id, patch)
       setT(updated)
-      setDraft({})
+      setSubjectDraft(null)
+      setTextDraft(null)
+      setNameDraft(null)
     } catch (err) {
       Alert.alert('Error', err instanceof ApiError ? err.message : String(err))
     } finally {
@@ -62,17 +84,6 @@ export default function TemplateDetailScreen() {
       setT(updated)
     } catch (err) {
       Alert.alert('Error', err instanceof ApiError ? err.message : String(err))
-    }
-  }
-
-  async function runPreview() {
-    if (!t) return
-    setPreview({ kind: 'loading' })
-    try {
-      const p = await api.previewTemplate(t.id, {})
-      setPreview({ kind: 'ok', ...p })
-    } catch (err) {
-      setPreview({ kind: 'error', message: err instanceof ApiError ? err.message : String(err) })
     }
   }
 
@@ -129,60 +140,44 @@ export default function TemplateDetailScreen() {
               </View>
             </Card>
 
-            <FormField label="Nombre">
-              <Input
-                value={draft.name ?? t.name}
-                onChange={(v) => setDraft((d) => ({ ...d, name: v }))}
-              />
+            <FormField label="Nombre interno">
+              <Input value={currentName} onChange={setNameDraft} />
             </FormField>
             <FormField label="Asunto">
-              <Input
-                value={draft.subject ?? t.subject}
-                onChange={(v) => setDraft((d) => ({ ...d, subject: v }))}
-              />
+              <Input value={currentSubject} onChange={setSubjectDraft} />
             </FormField>
-            <FormField label="Texto plano">
-              <Input
-                value={draft.bodyText ?? t.bodyText}
-                onChange={(v) => setDraft((d) => ({ ...d, bodyText: v }))}
-              />
-            </FormField>
-            <FormField label="HTML" hint="Cambios en subject/HTML/texto suben la versión.">
-              <Input
-                value={draft.bodyHtml ?? t.bodyHtml}
-                onChange={(v) => setDraft((d) => ({ ...d, bodyHtml: v }))}
-              />
+            <FormField
+              label="Cuerpo del mensaje"
+              hint="Texto normal. El HTML se genera automáticamente. Cambios en el contenido suben la versión."
+            >
+              <Input value={currentText} onChange={setTextDraft} multiline rows={14} />
             </FormField>
 
+            <Card variant="muted">
+              <View className="gap-2">
+                <View className="flex-row items-center gap-2">
+                  <Badge tone="brand">v{t.version}{dirty ? '+1' : ''}</Badge>
+                  <Text className="text-xs text-text-muted uppercase">Vista previa</Text>
+                </View>
+                <Text className="text-base font-semibold text-text-primary">{previewSubject}</Text>
+                <View className="pt-2">
+                  {previewParagraphs.map((p, i) => (
+                    <Text key={i} className="text-sm text-text-primary mb-3 leading-6">
+                      {p}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            </Card>
+
             <View className="gap-2">
-              <Button onPress={save} disabled={saving || Object.keys(draft).length === 0}>
+              <Button onPress={save} disabled={saving || !dirty}>
                 {saving ? 'Guardando…' : 'Guardar cambios'}
-              </Button>
-              <Button variant="secondary" onPress={runPreview}>
-                Ver preview
               </Button>
               <Button variant="danger" onPress={remove}>
                 Eliminar
               </Button>
             </View>
-
-            {preview.kind === 'loading' && <ActivityIndicator />}
-            {preview.kind === 'error' && (
-              <Text className="text-status-notEligible">{preview.message}</Text>
-            )}
-            {preview.kind === 'ok' && (
-              <Card variant="muted">
-                <View className="gap-2">
-                  <Badge tone="brand">v{preview.version}</Badge>
-                  <Text className="text-base font-semibold">{preview.subject}</Text>
-                  <Text className="text-sm text-text-secondary">{preview.text}</Text>
-                  <Text className="text-xs text-text-muted mt-2">HTML:</Text>
-                  <Text className="text-xs font-mono text-text-muted" selectable>
-                    {preview.html}
-                  </Text>
-                </View>
-              </Card>
-            )}
           </>
         )}
       </ScrollView>
