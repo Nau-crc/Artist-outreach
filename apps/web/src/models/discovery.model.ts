@@ -220,13 +220,13 @@ export async function commitCsvImport(input: RunCsvInput, actorId: string): Prom
 // Persist pipeline
 // ────────────────────────────────────────────────────────────────
 
-interface PersistParams {
+export interface PersistParams {
   runId: string
   sourceId: string
   results: DiscoveryResult[]
 }
 
-async function persistResults(params: PersistParams): Promise<Omit<RunReport, 'run'>> {
+export async function persistResults(params: PersistParams): Promise<Omit<RunReport, 'run'>> {
   const { runId, sourceId, results } = params
   const duplicates: RunReport['duplicates'] = []
   let created = 0
