@@ -42,9 +42,14 @@ export default function ContactsScreen() {
         title="Contactos"
         subtitle={`${items.length} resultado${items.length === 1 ? '' : 's'}`}
         trailing={
-          <Button variant="ghost" size="sm" onPress={() => router.back()}>
-            Atrás
-          </Button>
+          <View className="flex-row gap-2">
+            <Button variant="secondary" size="sm" onPress={() => router.push('/contacts/import')} testID="import-csv">
+              Importar CSV
+            </Button>
+            <Button variant="ghost" size="sm" onPress={() => router.back()}>
+              Atrás
+            </Button>
+          </View>
         }
       />
       <View className="p-4">

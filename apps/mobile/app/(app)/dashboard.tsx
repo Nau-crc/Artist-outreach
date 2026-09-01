@@ -102,6 +102,7 @@ export default function DashboardScreen() {
 
             <View className="gap-2 mt-4">
               <Button onPress={() => router.push('/contacts')}>Ver contactos</Button>
+              <Button variant="secondary" onPress={() => router.push('/contacts/import')}>Importar CSV</Button>
               <Button variant="secondary" onPress={() => router.push('/review')}>Cola de revisión</Button>
               <Button variant="ghost" onPress={() => router.push('/settings')}>Ajustes</Button>
               <Button variant="ghost" onPress={() => router.push('/audit')}>Auditoría</Button>

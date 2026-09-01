@@ -112,6 +112,46 @@ export type ReviewDecision =
   | { kind: 'DISCARD'; reason?: string }
   | { kind: 'SUPPRESS'; reason?: string }
 
+export interface CsvColumnMapping {
+  artistName: string
+  email?: string
+  website?: string
+  discipline?: string
+  country?: string
+  city?: string
+  language?: string
+}
+
+export interface CsvPreviewRow {
+  index: number
+  raw: Record<string, string>
+  normalized: unknown | null
+  errors: string[]
+}
+
+export interface CsvPreviewResult {
+  detectedHeaders: string[]
+  suggestedMapping: Partial<CsvColumnMapping>
+  rows: CsvPreviewRow[]
+  totalRows: number
+  validRows: number
+  invalidRows: number
+}
+
+export interface CsvCommitReport {
+  run: {
+    id: string
+    status: string
+    resultsCount: number
+    newContactsCount: number
+    finishedAt: string | null
+  }
+  resultsCount: number
+  newContactsCount: number
+  duplicates: Array<{ artistName: string; existingId: string }>
+  suppressed: number
+}
+
 export const api = {
   async health(): Promise<HealthResponse> {
     return request('/api/health')
@@ -154,6 +194,18 @@ export const api = {
     }
     const query = qs.toString()
     return request(`/api/audit${query ? `?${query}` : ''}`)
+  },
+  async previewCsv(csvText: string, mapping?: Partial<CsvColumnMapping>): Promise<CsvPreviewResult> {
+    return request('/api/discovery/csv/preview', {
+      method: 'POST',
+      body: JSON.stringify({ csvText, mapping }),
+    })
+  },
+  async commitCsv(csvText: string, mapping: CsvColumnMapping): Promise<CsvCommitReport> {
+    return request('/api/discovery/csv/commit', {
+      method: 'POST',
+      body: JSON.stringify({ csvText, mapping }),
+    })
   },
 }
 
