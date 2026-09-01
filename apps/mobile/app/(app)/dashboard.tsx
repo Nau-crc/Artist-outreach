@@ -104,6 +104,9 @@ export default function DashboardScreen() {
               <Button onPress={() => router.push('/contacts')}>Ver contactos</Button>
               <Button variant="secondary" onPress={() => router.push('/contacts/import')}>Importar CSV</Button>
               <Button variant="secondary" onPress={() => router.push('/review')}>Cola de revisión</Button>
+              <Button variant="secondary" onPress={() => router.push('/templates')}>Plantillas</Button>
+              <Button variant="secondary" onPress={() => router.push('/campaigns')}>Campañas</Button>
+              <Button variant="secondary" onPress={() => router.push('/consent-requests')}>Solicitudes de consentimiento</Button>
               <Button variant="ghost" onPress={() => router.push('/settings')}>Ajustes</Button>
               <Button variant="ghost" onPress={() => router.push('/audit')}>Auditoría</Button>
             </View>

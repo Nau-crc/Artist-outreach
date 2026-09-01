@@ -207,6 +207,162 @@ export const api = {
       body: JSON.stringify({ csvText, mapping }),
     })
   },
+
+  // ─── Templates ─────────────────────────────────────────────
+  async listTemplates(params: { active?: boolean } = {}): Promise<Template[]> {
+    const qs = new URLSearchParams()
+    if (params.active !== undefined) qs.set('active', String(params.active))
+    return request(`/api/templates${qs.toString() ? `?${qs}` : ''}`)
+  },
+  async getTemplate(id: string): Promise<Template> {
+    return request(`/api/templates/${id}`)
+  },
+  async createTemplate(input: {
+    name: string
+    subject: string
+    bodyHtml: string
+    bodyText: string
+    active?: boolean
+  }): Promise<Template> {
+    return request('/api/templates', { method: 'POST', body: JSON.stringify(input) })
+  },
+  async updateTemplate(id: string, patch: Partial<{
+    name: string
+    subject: string
+    bodyHtml: string
+    bodyText: string
+    active: boolean
+  }>): Promise<Template> {
+    return request(`/api/templates/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
+  },
+  async deleteTemplate(id: string): Promise<void> {
+    await request(`/api/templates/${id}`, { method: 'DELETE' })
+  },
+  async previewTemplate(id: string, vars: {
+    artistName?: string
+    confirmUrl?: string
+    unsubscribeUrl?: string
+  } = {}): Promise<{ subject: string; html: string; text: string; version: number }> {
+    return request(`/api/templates/${id}/preview`, { method: 'POST', body: JSON.stringify(vars) })
+  },
+
+  // ─── Campaigns ─────────────────────────────────────────────
+  async listCampaigns(params: { active?: boolean } = {}): Promise<Campaign[]> {
+    const qs = new URLSearchParams()
+    if (params.active !== undefined) qs.set('active', String(params.active))
+    return request(`/api/campaigns${qs.toString() ? `?${qs}` : ''}`)
+  },
+  async getCampaign(id: string): Promise<Campaign> {
+    return request(`/api/campaigns/${id}`)
+  },
+  async createCampaign(input: {
+    name: string
+    active?: boolean
+    startsAt?: string | null
+    endsAt?: string | null
+    maxSends?: number | null
+  }): Promise<Campaign> {
+    return request('/api/campaigns', { method: 'POST', body: JSON.stringify(input) })
+  },
+  async updateCampaign(id: string, patch: Partial<{
+    name: string
+    active: boolean
+    startsAt: string | null
+    endsAt: string | null
+    maxSends: number | null
+  }>): Promise<Campaign> {
+    return request(`/api/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(patch) })
+  },
+  async deleteCampaign(id: string): Promise<void> {
+    await request(`/api/campaigns/${id}`, { method: 'DELETE' })
+  },
+
+  // ─── Consent requests ─────────────────────────────────────
+  async listConsentRequests(params: {
+    status?: 'PENDING' | 'SENT' | 'FAILED' | 'CANCELLED'
+    contactId?: string
+    campaignId?: string
+    limit?: number
+  } = {}): Promise<ConsentRequest[]> {
+    const qs = new URLSearchParams()
+    for (const [k, v] of Object.entries(params)) {
+      if (v !== undefined) qs.set(k, String(v))
+    }
+    return request(`/api/consent-requests${qs.toString() ? `?${qs}` : ''}`)
+  },
+  async enqueueConsentRequest(input: {
+    contactId: string
+    campaignId: string
+    templateId: string
+  }): Promise<{ status: 'ENQUEUED' | 'NOT_ELIGIBLE'; request?: ConsentRequest; reasons?: string[] }> {
+    return request('/api/consent-requests', { method: 'POST', body: JSON.stringify(input) })
+  },
+  async cancelConsentRequest(id: string): Promise<void> {
+    await request(`/api/consent-requests/${id}`, { method: 'DELETE' })
+  },
+  async simulateConsentRequests(input: {
+    campaignId?: string
+    templateId?: string
+    limit?: number
+  }): Promise<SimulationResult> {
+    return request('/api/consent-requests/simulate', { method: 'POST', body: JSON.stringify(input) })
+  },
+}
+
+// ────────────────────────────────────────────────────────────────
+// Newly added types
+// ────────────────────────────────────────────────────────────────
+
+export interface Template {
+  id: string
+  name: string
+  subject: string
+  bodyHtml: string
+  bodyText: string
+  version: number
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Campaign {
+  id: string
+  name: string
+  active: boolean
+  startsAt: string | null
+  endsAt: string | null
+  maxSends: number | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface ConsentRequest {
+  id: string
+  contactId: string
+  campaignId: string
+  templateId: string
+  status: 'PENDING' | 'SENT' | 'FAILED' | 'CANCELLED'
+  token: string
+  sentAt: string | null
+  createdAt: string
+  contact?: { id: string; artistName: string; email: string | null }
+  campaign?: { id: string; name: string; active: boolean }
+  template?: { id: string; name: string; version: number }
+}
+
+export interface SimulationResult {
+  totalEvaluated: number
+  eligible: number
+  notEligible: number
+  suppressed: number
+  reasonsBreakdown: Record<string, number>
+  sample: Array<{
+    contactId: string
+    artistName: string
+    email: string | null
+    eligible: boolean
+    failingRules: string[]
+  }>
 }
 
 export async function checkHealth(): Promise<HealthResponse> {

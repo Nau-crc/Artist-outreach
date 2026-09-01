@@ -197,7 +197,7 @@ export async function enqueueConsentRequest(
             hourlySendLimit: config.hourlySendLimit,
           },
           suppressed,
-        } as Prisma.InputJsonValue,
+        } as unknown as Prisma.InputJsonValue,
         createdBy: actorId,
       },
     })
