@@ -2,14 +2,32 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "jsx": "react-native",
-    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2023",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "moduleResolution": "Bundler",
     "noEmit": true,
-    "types": ["react", "jest"],
+    "types": [
+      "react",
+      "jest"
+    ],
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": [
+        "./src/*"
+      ]
     }
   },
-  "include": ["app/**/*", "src/**/*", "tests/**/*", "nativewind-env.d.ts"],
-  "exclude": ["node_modules"]
+  "include": [
+    "app/**/*",
+    "src/**/*",
+    "tests/**/*",
+    "nativewind-env.d.ts",
+    ".expo/types/**/*.ts",
+    "expo-env.d.ts"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
 }
