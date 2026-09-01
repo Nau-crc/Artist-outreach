@@ -65,7 +65,24 @@ export function verifyBearerToken(request: Request, jwtSecret = process.env.SUPA
   return claims
 }
 
+const DEV_ADMIN_ID = '00000000-0000-0000-0000-000000000001'
+
+/**
+ * Bypass de auth para desarrollo local.
+ * Solo activo si:
+ *   - NODE_ENV !== 'production'
+ *   - DEV_BYPASS_AUTH === 'true'
+ * En cualquier otro caso se ignora — imposible activarlo en producción.
+ */
+function tryDevBypass(): AuthClaims | null {
+  if (process.env.NODE_ENV === 'production') return null
+  if (process.env.DEV_BYPASS_AUTH !== 'true') return null
+  return { userId: process.env.DEV_ADMIN_ID ?? DEV_ADMIN_ID, role: 'admin' }
+}
+
 export function requireAdmin(request: Request, jwtSecret?: string): AuthClaims {
+  const bypass = tryDevBypass()
+  if (bypass) return bypass
   const claims = verifyBearerToken(request, jwtSecret)
   if (claims.role !== 'admin') {
     throw new ForbiddenError('Admin role required')
