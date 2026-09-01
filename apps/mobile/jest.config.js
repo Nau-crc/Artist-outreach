@@ -1,27 +1,38 @@
-// Fase 1: preset node minimalista — solo verifica que Jest arranca.
-// Fase 2 (cuando testeemos componentes RN reales) migramos a jest-expo
-// con sus setups (expo-constants mock, RN mocks, transform whitelist para pnpm, etc.).
+// jest-expo — preset completo para testear componentes React Native.
 //
-// configFile: false + babelrc: false evita que babel-jest cargue el babel.config.js
-// del proyecto (que está pensado para Metro/Expo y trae plugins de RN incompatibles
-// en el runtime de Node de Jest).
+// Ajustes clave:
+//   - transformIgnorePatterns con soporte para .pnpm/ nesting.
+//     El path real bajo pnpm es
+//     node_modules/.pnpm/<pkg>@<ver>/node_modules/<pkg>/...
+//     El pattern permite un prefijo .pnpm/... opcional antes del paquete.
+//   - setupFiles carga mocks de expo-constants, expo-secure-store,
+//     @supabase/supabase-js y expo-router para tests unitarios de componentes.
+
+const rnPackages = [
+  '(?:jest-)?react-native',
+  '@react-native(?:-community)?',
+  '@react-native/[^/]+',
+  'expo(?:nent)?',
+  'expo-[^/]+',
+  '@expo(?:nent)?/[^/]+',
+  '@expo-google-fonts/[^/]+',
+  '@artist-outreach/[^/]+',
+  'nativewind',
+  'react-native-css-interop',
+  'react-native-url-polyfill',
+  'react-native-worklets',
+]
+
+const transformIgnorePatterns = [
+  `node_modules/(?!(?:\\.pnpm/[^/]+/node_modules/)?(?:${rnPackages.join('|')})/)`,
+]
+
 module.exports = {
-  testEnvironment: 'node',
+  preset: 'jest-expo',
   testMatch: ['**/tests/**/*.test.{ts,tsx}'],
-  transform: {
-    '^.+\\.(ts|tsx)$': [
-      'babel-jest',
-      {
-        configFile: false,
-        babelrc: false,
-        presets: [
-          ['@babel/preset-env', { targets: { node: 'current' } }],
-          '@babel/preset-typescript',
-        ],
-      },
-    ],
-  },
+  setupFiles: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
+  transformIgnorePatterns,
 }
