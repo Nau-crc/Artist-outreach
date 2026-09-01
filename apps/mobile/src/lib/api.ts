@@ -307,6 +307,53 @@ export const api = {
   }): Promise<SimulationResult> {
     return request('/api/consent-requests/simulate', { method: 'POST', body: JSON.stringify(input) })
   },
+
+  // ─── Web sources (core: extracción autorizada) ────────────
+  async listWebSources(): Promise<WebSource[]> {
+    return request('/api/discovery/web-sources')
+  },
+  async getWebSource(id: string): Promise<WebSource> {
+    return request(`/api/discovery/web-sources/${id}`)
+  },
+  async createWebSource(input: {
+    name: string
+    url: string
+    complianceNotes?: string
+    termsUrl?: string
+  }): Promise<WebSource> {
+    return request('/api/discovery/web-sources', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+  async verifyWebSource(id: string, input: {
+    authorizationRef: string
+    complianceNotes: string
+  }): Promise<WebSource> {
+    return request(`/api/discovery/web-sources/${id}/verify`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    })
+  },
+  async unverifyWebSource(id: string, reason: string): Promise<WebSource> {
+    return request(`/api/discovery/web-sources/${id}/verify`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    })
+  },
+  async checkWebSourceRobots(id: string): Promise<RobotsCheckResult> {
+    return request(`/api/discovery/web-sources/${id}/check-robots`, { method: 'POST' })
+  },
+  async extractFromWebSource(id: string, opts: {
+    maxPages?: number
+    maxDepth?: number
+    rateLimitMs?: number
+  }): Promise<ExtractReport> {
+    return request(`/api/discovery/web-sources/${id}/extract`, {
+      method: 'POST',
+      body: JSON.stringify(opts),
+    })
+  },
 }
 
 // ────────────────────────────────────────────────────────────────
@@ -363,6 +410,57 @@ export interface SimulationResult {
     eligible: boolean
     failingRules: string[]
   }>
+}
+
+export interface WebSource {
+  id: string
+  slug: string
+  name: string
+  type: 'API' | 'DIRECTORY' | 'CSV' | 'MANUAL'
+  complianceStatus: 'VERIFIED' | 'UNVERIFIED' | 'PROHIBITED'
+  complianceNotes: string | null
+  termsUrl: string | null
+  enabled: boolean
+  config: { startUrl?: string; host?: string } | Record<string, unknown>
+  createdAt: string
+  updatedAt: string
+}
+
+export interface RobotsCheckResult {
+  allowed: boolean
+  crawlDelayMs: number
+  reason: 'robots_allowed' | 'robots_disallowed' | 'robots_missing' | 'robots_error'
+  robotsUrl: string
+}
+
+export interface ExtractReport {
+  run: {
+    id: string
+    status: string
+    resultsCount: number
+    newContactsCount: number
+    finishedAt: string | null
+    error: string | null
+  }
+  crawl: {
+    visitedCount: number
+    emailsCount: number
+    aborted: boolean
+    abortReason?: string
+    pages: Array<{
+      url: string
+      depth: number
+      status: number | 'skipped_robots' | 'error'
+      emailsFound: number
+      error?: string
+    }>
+  }
+  persisted: {
+    resultsCount: number
+    newContactsCount: number
+    duplicates: Array<{ artistName: string; existingId: string }>
+    suppressed: number
+  }
 }
 
 export async function checkHealth(): Promise<HealthResponse> {
