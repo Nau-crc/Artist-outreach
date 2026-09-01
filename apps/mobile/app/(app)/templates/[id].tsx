@@ -6,15 +6,18 @@ import { Button, Input, Badge } from '@artist-outreach/ui/atoms'
 import { Card, FormField } from '@artist-outreach/ui/molecules'
 import { AppHeader } from '@artist-outreach/ui/organisms'
 import { api, ApiError, type Template } from '@/lib/api'
-import { fillPreviewVars, textToHtml } from '@/lib/text-to-html'
+import { htmlToPlainText } from '@/lib/html-to-text'
+import { fillPreviewVars } from '@/lib/text-to-html'
+import { RichTextEditor } from '@/components/RichTextEditor'
 import { VariableChips, appendVariable } from '@/components/VariableChips'
+import { PreviewRenderer } from '@/components/PreviewRenderer'
 
 export default function TemplateDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
   const [t, setT] = useState<Template | null>(null)
   const [subjectDraft, setSubjectDraft] = useState<string | null>(null)
-  const [textDraft, setTextDraft] = useState<string | null>(null)
+  const [htmlDraft, setHtmlDraft] = useState<string | null>(null)
   const [nameDraft, setNameDraft] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -27,7 +30,7 @@ export default function TemplateDetailScreen() {
       const template = await api.getTemplate(id)
       setT(template)
       setSubjectDraft(null)
-      setTextDraft(null)
+      setHtmlDraft(null)
       setNameDraft(null)
     } catch (err) {
       setError(err instanceof ApiError ? err.message : String(err))
@@ -41,19 +44,16 @@ export default function TemplateDetailScreen() {
   }, [id])
 
   const currentSubject = subjectDraft ?? t?.subject ?? ''
-  const currentText = textDraft ?? t?.bodyText ?? ''
+  const currentHtml = htmlDraft ?? t?.bodyHtml ?? ''
   const currentName = nameDraft ?? t?.name ?? ''
 
   const previewSubject = useMemo(() => fillPreviewVars(currentSubject), [currentSubject])
-  const previewParagraphs = useMemo(
-    () => fillPreviewVars(currentText).split(/\n{2,}/),
-    [currentText],
-  )
+  const previewHtml = useMemo(() => fillPreviewVars(currentHtml), [currentHtml])
 
   const dirty =
     (nameDraft !== null && nameDraft !== t?.name) ||
     (subjectDraft !== null && subjectDraft !== t?.subject) ||
-    (textDraft !== null && textDraft !== t?.bodyText)
+    (htmlDraft !== null && htmlDraft !== t?.bodyHtml)
 
   async function save() {
     if (!t || !dirty) return
@@ -62,14 +62,14 @@ export default function TemplateDetailScreen() {
       const patch: Record<string, string> = {}
       if (nameDraft !== null && nameDraft !== t.name) patch.name = nameDraft
       if (subjectDraft !== null && subjectDraft !== t.subject) patch.subject = subjectDraft
-      if (textDraft !== null && textDraft !== t.bodyText) {
-        patch.bodyText = textDraft
-        patch.bodyHtml = textToHtml(textDraft)
+      if (htmlDraft !== null && htmlDraft !== t.bodyHtml) {
+        patch.bodyHtml = htmlDraft
+        patch.bodyText = htmlToPlainText(htmlDraft)
       }
       const updated = await api.updateTemplate(t.id, patch)
       setT(updated)
       setSubjectDraft(null)
-      setTextDraft(null)
+      setHtmlDraft(null)
       setNameDraft(null)
     } catch (err) {
       Alert.alert('Error', err instanceof ApiError ? err.message : String(err))
@@ -153,16 +153,13 @@ export default function TemplateDetailScreen() {
               onInsert={(v) => setSubjectDraft(appendVariable(currentSubject, v))}
             />
 
-            <FormField
-              label="Cuerpo del mensaje"
-              hint="Deja una línea en blanco para separar párrafos. Cambios en el contenido suben la versión."
-            >
-              <Input value={currentText} onChange={setTextDraft} multiline rows={14} />
+            <FormField label="Cuerpo del mensaje">
+              <RichTextEditor
+                valueHtml={currentHtml}
+                onChangeHtml={setHtmlDraft}
+                testID="body-rte"
+              />
             </FormField>
-            <VariableChips
-              target="body"
-              onInsert={(v) => setTextDraft(appendVariable(currentText, v))}
-            />
 
             <View className="flex-row items-center gap-2 mt-4">
               <Text className="text-xs text-text-muted uppercase">Vista previa</Text>
@@ -171,13 +168,7 @@ export default function TemplateDetailScreen() {
             <Card variant="muted">
               <View className="gap-2">
                 <Text className="text-base font-semibold text-text-primary">{previewSubject}</Text>
-                <View className="pt-2">
-                  {previewParagraphs.map((p, i) => (
-                    <Text key={i} className="text-sm text-text-primary mb-3 leading-6 whitespace-pre-wrap">
-                      {p}
-                    </Text>
-                  ))}
-                </View>
+                <PreviewRenderer html={previewHtml} />
               </View>
             </Card>
 
