@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "next build",
+    "build": "prisma generate --schema=../../prisma/schema.prisma && next build",
+    "postinstall": "prisma generate --schema=../../prisma/schema.prisma",
     "start": "next start -p 3000",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
