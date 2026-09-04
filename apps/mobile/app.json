@@ -15,7 +15,8 @@
       "package": "com.artistoutreach.mobile"
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "single"
     },
     "plugins": ["expo-router"],
     "experiments": {

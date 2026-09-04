@@ -1,0 +1,7 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "pnpm --dir ../.. run --filter=@artist-outreach/mobile build:web",
+  "installCommand": "pnpm install",
+  "outputDirectory": "dist",
+  "framework": null
+}

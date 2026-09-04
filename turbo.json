@@ -25,12 +25,20 @@
     "MUSICBRAINZ_USER_AGENT",
     "APP_VERSION",
     "VERCEL_URL",
-    "VERCEL_ENV"
+    "VERCEL_ENV",
+    "EXPO_PUBLIC_API_URL",
+    "EXPO_PUBLIC_SUPABASE_URL",
+    "EXPO_PUBLIC_SUPABASE_ANON_KEY",
+    "EXPO_PUBLIC_DEV_BYPASS_AUTH"
   ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
+    "build:web": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
     },
     "dev": {
       "cache": false,
