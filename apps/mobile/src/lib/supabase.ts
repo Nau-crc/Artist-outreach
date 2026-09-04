@@ -1,12 +1,59 @@
 import 'react-native-url-polyfill/auto'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { Platform } from 'react-native'
 import * as SecureStore from 'expo-secure-store'
 
 const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL
 const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY
 const DEV_BYPASS = process.env.EXPO_PUBLIC_DEV_BYPASS_AUTH === 'true'
 
-const secureStorage = {
+// SecureStore es iOS/Android-only. En Web usamos localStorage con try/catch
+// (SSR / modo privado pueden fallar) y en su defecto una memoria in-proceso.
+function webStorage() {
+  const memory = new Map<string, string>()
+  const canUseLocal = () => {
+    try {
+      return typeof window !== 'undefined' && !!window.localStorage
+    } catch {
+      return false
+    }
+  }
+  return {
+    async getItem(key: string) {
+      if (canUseLocal()) {
+        try {
+          return window.localStorage.getItem(key)
+        } catch {
+          /* fallthrough */
+        }
+      }
+      return memory.get(key) ?? null
+    },
+    async setItem(key: string, value: string) {
+      if (canUseLocal()) {
+        try {
+          window.localStorage.setItem(key, value)
+          return
+        } catch {
+          /* fallthrough */
+        }
+      }
+      memory.set(key, value)
+    },
+    async removeItem(key: string) {
+      if (canUseLocal()) {
+        try {
+          window.localStorage.removeItem(key)
+        } catch {
+          /* fallthrough */
+        }
+      }
+      memory.delete(key)
+    },
+  }
+}
+
+const nativeStorage = {
   async getItem(key: string) {
     return SecureStore.getItemAsync(key)
   },
@@ -17,6 +64,8 @@ const secureStorage = {
     await SecureStore.deleteItemAsync(key)
   },
 }
+
+const storage = Platform.OS === 'web' ? webStorage() : nativeStorage
 
 function createStub(): SupabaseClient {
   const noop = () => Promise.resolve({ data: null, error: null })
@@ -42,10 +91,10 @@ function createStub(): SupabaseClient {
 function createRealClient(url: string, anonKey: string): SupabaseClient {
   return createClient(url, anonKey, {
     auth: {
-      storage: secureStorage,
+      storage,
       autoRefreshToken: true,
       persistSession: true,
-      detectSessionInUrl: false,
+      detectSessionInUrl: true,
     },
   })
 }
