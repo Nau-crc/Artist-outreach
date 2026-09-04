@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "next dev -p 3000",
-    "build": "prisma generate --schema=../../prisma/schema.prisma && next build",
+    "build": "prisma generate --schema=../../prisma/schema.prisma && pnpm --filter @artist-outreach/mobile build:web && mkdir -p public && rm -rf public/admin && cp -r ../mobile/dist public/admin && next build",
+    "build:web-only": "prisma generate --schema=../../prisma/schema.prisma && next build",
     "postinstall": "prisma generate --schema=../../prisma/schema.prisma",
     "start": "next start -p 3000",
     "lint": "next lint",

@@ -1,10 +1,16 @@
 import Constants from 'expo-constants'
 import { supabase } from './supabase'
 
-const API_URL =
+const API_URL_ENV =
   (Constants.expoConfig?.extra?.apiUrl as string | undefined) ??
-  process.env.EXPO_PUBLIC_API_URL ??
-  'http://localhost:3000'
+  process.env.EXPO_PUBLIC_API_URL
+
+// Si EXPO_PUBLIC_API_URL está vacía o no definida, usamos paths relativos.
+// Sirve para el deploy monolítico donde el admin vive bajo /admin en el
+// mismo origen que la API (fetch('/api/...') resuelve al mismo host).
+// En dev con Expo Web local (localhost:8081) o binario móvil, ponemos
+// EXPO_PUBLIC_API_URL=http://localhost:3000 (o la URL de Vercel).
+const API_URL = API_URL_ENV && API_URL_ENV.trim() !== '' ? API_URL_ENV : ''
 
 export class ApiError extends Error {
   readonly status: number
