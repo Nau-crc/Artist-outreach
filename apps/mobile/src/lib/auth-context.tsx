@@ -5,7 +5,7 @@ import { supabase } from './supabase'
 interface AuthState {
   session: Session | null
   loading: boolean
-  signInWithMagicLink: (email: string) => Promise<{ error?: string }>
+  signInWithPassword: (email: string, password: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
 }
 
@@ -55,11 +55,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       session,
       loading,
-      async signInWithMagicLink(email) {
+      async signInWithPassword(email, password) {
         if (DEV_BYPASS) return {}
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: { shouldCreateUser: false },
+        const { error } = await supabase.auth.signInWithPassword({
+          email: email.trim().toLowerCase(),
+          password,
         })
         return error ? { error: error.message } : {}
       },

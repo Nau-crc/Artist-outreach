@@ -6,6 +6,7 @@ const keyboardType = {
   email: 'email-address',
   url: 'url',
   search: 'default',
+  password: 'default',
 } as const
 
 export function Input({
@@ -33,7 +34,9 @@ export function Input({
       autoFocus={autoFocus}
       testID={testID}
       keyboardType={keyboardType[type]}
-      autoCapitalize={type === 'email' || type === 'url' ? 'none' : 'sentences'}
+      autoCapitalize={type === 'email' || type === 'url' || type === 'password' ? 'none' : 'sentences'}
+      secureTextEntry={type === 'password'}
+      autoComplete={type === 'password' ? 'password' : type === 'email' ? 'email' : 'off'}
       multiline={multiline}
       numberOfLines={multiline ? rows : 1}
       textAlignVertical={multiline ? 'top' : 'auto'}

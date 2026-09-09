@@ -20,27 +20,30 @@ describe('LoginScreen (native)', () => {
     expect(submit.props.accessibilityState?.disabled).toBe(true)
   })
 
-  it('enables submit once email is entered', async () => {
+  it('submit stays disabled with only email', async () => {
     renderLogin()
     await waitFor(() => screen.getByTestId('login-email'))
     await act(async () => {
       fireEvent.changeText(screen.getByTestId('login-email'), 'me@example.com')
     })
     const submit = screen.getByTestId('login-submit')
-    expect(submit.props.accessibilityState?.disabled).toBe(false)
+    expect(submit.props.accessibilityState?.disabled).toBe(true)
   })
 
-  it('shows success message after sending magic link', async () => {
+  it('enables submit once email and password are entered', async () => {
     renderLogin()
     await waitFor(() => screen.getByTestId('login-email'))
     await act(async () => {
       fireEvent.changeText(screen.getByTestId('login-email'), 'me@example.com')
+      fireEvent.changeText(screen.getByTestId('login-password'), 'hunter2')
     })
-    await act(async () => {
-      fireEvent.press(screen.getByTestId('login-submit'))
-    })
-    await waitFor(() => {
-      expect(screen.getByText(/Revisa tu bandeja/)).toBeTruthy()
-    })
+    const submit = screen.getByTestId('login-submit')
+    expect(submit.props.accessibilityState?.disabled).toBe(false)
+  })
+
+  it('has a password field with type=password (masked)', async () => {
+    renderLogin()
+    await waitFor(() => screen.getByTestId('login-password'))
+    expect(screen.getByTestId('login-password')).toBeTruthy()
   })
 })

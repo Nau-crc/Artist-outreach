@@ -1,25 +1,36 @@
 import { useState } from 'react'
 import { KeyboardAvoidingView, Platform, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
-import { Button } from '@artist-outreach/ui/atoms'
+import { Button, Input } from '@artist-outreach/ui/atoms'
 import { FormField } from '@artist-outreach/ui/molecules'
-import { Input } from '@artist-outreach/ui/atoms'
 import { useAuth } from '@/lib/auth-context'
 
-type Status = { kind: 'idle' } | { kind: 'sending' } | { kind: 'sent' } | { kind: 'error'; message: string }
+type Status = { kind: 'idle' } | { kind: 'sending' } | { kind: 'error'; message: string }
 
 export default function LoginScreen() {
-  const { signInWithMagicLink } = useAuth()
+  const { signInWithPassword } = useAuth()
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
 
   async function submit() {
-    if (!email.trim()) return
+    if (!email.trim() || !password) return
     setStatus({ kind: 'sending' })
-    const { error } = await signInWithMagicLink(email.trim().toLowerCase())
-    if (error) setStatus({ kind: 'error', message: error })
-    else setStatus({ kind: 'sent' })
+    const { error } = await signInWithPassword(email.trim().toLowerCase(), password)
+    if (error) {
+      // Traducciones amigables de los errores más comunes.
+      const friendly =
+        error.toLowerCase().includes('invalid login credentials')
+          ? 'Email o contraseña incorrectos.'
+          : error
+      setStatus({ kind: 'error', message: friendly })
+    } else {
+      // La redirección la hace el layout al ver la sesión activa.
+      setStatus({ kind: 'idle' })
+    }
   }
+
+  const canSubmit = email.trim() && password && status.kind !== 'sending'
 
   return (
     <SafeAreaView className="flex-1 bg-surface-base">
@@ -32,7 +43,7 @@ export default function LoginScreen() {
             <View className="gap-2">
               <Text className="text-3xl font-semibold text-text-primary">Artist Outreach</Text>
               <Text className="text-base text-text-secondary">
-                Panel interno. Introduce tu email y te enviaremos un enlace de acceso.
+                Panel interno. Accede con tu email y contraseña.
               </Text>
             </View>
 
@@ -46,27 +57,37 @@ export default function LoginScreen() {
               />
             </FormField>
 
+            <FormField label="Contraseña" required>
+              <Input
+                value={password}
+                onChange={setPassword}
+                placeholder="••••••••"
+                type="password"
+                testID="login-password"
+              />
+            </FormField>
+
             <Button
               onPress={submit}
-              disabled={status.kind === 'sending' || !email.trim()}
+              disabled={!canSubmit}
               testID="login-submit"
             >
-              {status.kind === 'sending' ? 'Enviando…' : 'Enviar enlace'}
+              {status.kind === 'sending' ? 'Entrando…' : 'Entrar'}
             </Button>
-
-            {status.kind === 'sent' && (
-              <View className="p-4 rounded-md bg-status-eligible/15">
-                <Text className="text-status-eligible text-sm">
-                  Revisa tu bandeja de entrada. Toca el enlace en tu teléfono para entrar.
-                </Text>
-              </View>
-            )}
 
             {status.kind === 'error' && (
               <View className="p-4 rounded-md bg-status-notEligible/15">
                 <Text className="text-status-notEligible text-sm">{status.message}</Text>
               </View>
             )}
+
+            <View className="p-4 rounded-md bg-surface-subtle">
+              <Text className="text-xs text-text-muted">
+                Los usuarios se crean desde Supabase (Authentication → Users → Add User),
+                marcando "Auto Confirm User" y luego añadiéndoles{' '}
+                <Text className="font-mono">app_metadata.role = admin</Text>.
+              </Text>
+            </View>
           </View>
         </View>
       </KeyboardAvoidingView>

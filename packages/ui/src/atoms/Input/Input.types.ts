@@ -3,7 +3,7 @@ export interface InputProps {
   onChange: (value: string) => void
   placeholder?: string
   disabled?: boolean
-  type?: 'text' | 'email' | 'url' | 'search'
+  type?: 'text' | 'email' | 'url' | 'search' | 'password'
   autoFocus?: boolean
   invalid?: boolean
   multiline?: boolean
