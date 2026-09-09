@@ -69,6 +69,10 @@ const storage = Platform.OS === 'web' ? webStorage() : nativeStorage
 
 function createStub(): SupabaseClient {
   const noop = () => Promise.resolve({ data: null, error: null })
+  const notConfiguredError = {
+    data: { user: null, session: null },
+    error: { message: 'Cliente no configurado: falta EXPO_PUBLIC_SUPABASE_URL o EXPO_PUBLIC_SUPABASE_ANON_KEY en el build.' },
+  }
   return {
     auth: {
       async getSession() {
@@ -78,7 +82,10 @@ function createStub(): SupabaseClient {
         return { data: { subscription: { unsubscribe: () => {} } } }
       },
       async signInWithOtp() {
-        return { data: {}, error: null }
+        return notConfiguredError
+      },
+      async signInWithPassword() {
+        return notConfiguredError
       },
       async signOut() {
         return { error: null }
@@ -87,6 +94,14 @@ function createStub(): SupabaseClient {
     from: () => ({ select: noop, insert: noop, update: noop, delete: noop }),
   } as unknown as SupabaseClient
 }
+
+// Exportar el modo del cliente para que la UI pueda advertir si estamos en stub.
+export const supabaseMode: 'real' | 'stub-bypass' | 'stub-missing-config' | 'stub-test' = (() => {
+  if (SUPABASE_URL && SUPABASE_ANON_KEY) return 'real'
+  if (DEV_BYPASS) return 'stub-bypass'
+  if (process.env.NODE_ENV === 'test') return 'stub-test'
+  return 'stub-missing-config'
+})()
 
 function createRealClient(url: string, anonKey: string): SupabaseClient {
   return createClient(url, anonKey, {
