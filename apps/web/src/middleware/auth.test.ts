@@ -13,68 +13,70 @@ function reqWith(headers: Record<string, string>): Request {
 }
 
 describe('verifyBearerToken', () => {
-  it('extracts userId from valid token', () => {
+  it('extracts userId from valid token', async () => {
     const token = tokenFor({ sub: 'user-1' })
-    const claims = verifyBearerToken(reqWith({ authorization: `Bearer ${token}` }), SECRET)
+    const claims = await verifyBearerToken(reqWith({ authorization: `Bearer ${token}` }), SECRET)
     expect(claims.userId).toBe('user-1')
     expect(claims.role).toBeUndefined()
   })
 
-  it('reads role from app_metadata', () => {
+  it('reads role from app_metadata', async () => {
     const token = tokenFor({ sub: 'user-1', app_metadata: { role: 'admin' } })
-    const claims = verifyBearerToken(reqWith({ authorization: `Bearer ${token}` }), SECRET)
+    const claims = await verifyBearerToken(reqWith({ authorization: `Bearer ${token}` }), SECRET)
     expect(claims.role).toBe('admin')
   })
 
-  it('rejects missing header', () => {
-    expect(() => verifyBearerToken(reqWith({}), SECRET)).toThrow(UnauthorizedError)
+  it('rejects missing header', async () => {
+    await expect(verifyBearerToken(reqWith({}), SECRET)).rejects.toBeInstanceOf(UnauthorizedError)
   })
 
-  it('rejects malformed header', () => {
-    expect(() => verifyBearerToken(reqWith({ authorization: 'Basic abc' }), SECRET)).toThrow(UnauthorizedError)
+  it('rejects malformed header', async () => {
+    await expect(
+      verifyBearerToken(reqWith({ authorization: 'Basic abc' }), SECRET),
+    ).rejects.toBeInstanceOf(UnauthorizedError)
   })
 
-  it('rejects tampered token', () => {
+  it('rejects tampered token', async () => {
     const token = tokenFor({ sub: 'user-1' })
-    expect(() =>
+    await expect(
       verifyBearerToken(reqWith({ authorization: `Bearer ${token}tampered` }), SECRET),
-    ).toThrow(UnauthorizedError)
+    ).rejects.toBeInstanceOf(UnauthorizedError)
   })
 
-  it('rejects token signed with a different secret', () => {
+  it('rejects token signed with a different secret', async () => {
     const token = jwt.sign({ sub: 'user-1' }, 'other-secret')
-    expect(() => verifyBearerToken(reqWith({ authorization: `Bearer ${token}` }), SECRET)).toThrow(
-      UnauthorizedError,
-    )
+    await expect(
+      verifyBearerToken(reqWith({ authorization: `Bearer ${token}` }), SECRET),
+    ).rejects.toBeInstanceOf(UnauthorizedError)
   })
 
-  it('rejects token without sub', () => {
+  it('rejects token without sub', async () => {
     const token = tokenFor({ email: 'x@example.com' })
-    expect(() => verifyBearerToken(reqWith({ authorization: `Bearer ${token}` }), SECRET)).toThrow(
-      UnauthorizedError,
-    )
+    await expect(
+      verifyBearerToken(reqWith({ authorization: `Bearer ${token}` }), SECRET),
+    ).rejects.toBeInstanceOf(UnauthorizedError)
   })
 })
 
 describe('requireAdmin', () => {
-  it('accepts admin role', () => {
+  it('accepts admin role', async () => {
     const token = tokenFor({ sub: 'user-1', app_metadata: { role: 'admin' } })
-    const claims = requireAdmin(reqWith({ authorization: `Bearer ${token}` }), SECRET)
+    const claims = await requireAdmin(reqWith({ authorization: `Bearer ${token}` }), SECRET)
     expect(claims.role).toBe('admin')
   })
 
-  it('rejects non-admin', () => {
+  it('rejects non-admin', async () => {
     const token = tokenFor({ sub: 'user-1', app_metadata: { role: 'user' } })
-    expect(() => requireAdmin(reqWith({ authorization: `Bearer ${token}` }), SECRET)).toThrow(
-      ForbiddenError,
-    )
+    await expect(
+      requireAdmin(reqWith({ authorization: `Bearer ${token}` }), SECRET),
+    ).rejects.toBeInstanceOf(ForbiddenError)
   })
 
-  it('rejects when role missing', () => {
+  it('rejects when role missing', async () => {
     const token = tokenFor({ sub: 'user-1' })
-    expect(() => requireAdmin(reqWith({ authorization: `Bearer ${token}` }), SECRET)).toThrow(
-      ForbiddenError,
-    )
+    await expect(
+      requireAdmin(reqWith({ authorization: `Bearer ${token}` }), SECRET),
+    ).rejects.toBeInstanceOf(ForbiddenError)
   })
 })
 
@@ -89,29 +91,29 @@ describe('DEV_BYPASS_AUTH', () => {
     else process.env.DEV_BYPASS_AUTH = originalBypass
   })
 
-  it('injects admin claims when flag is set in non-production', () => {
-    (process.env as Record<string, string | undefined>).NODE_ENV = 'development'
+  it('injects admin claims when flag is set in non-production', async () => {
+    ;(process.env as Record<string, string | undefined>).NODE_ENV = 'development'
     process.env.DEV_BYPASS_AUTH = 'true'
-    const claims = requireAdmin(reqWith({}), SECRET)
+    const claims = await requireAdmin(reqWith({}), SECRET)
     expect(claims.role).toBe('admin')
     expect(claims.userId).toBe('00000000-0000-0000-0000-000000000001')
   })
 
-  it('is ignored in production even with flag set', () => {
-    (process.env as Record<string, string | undefined>).NODE_ENV = 'production'
+  it('is ignored in production even with flag set', async () => {
+    ;(process.env as Record<string, string | undefined>).NODE_ENV = 'production'
     process.env.DEV_BYPASS_AUTH = 'true'
-    expect(() => requireAdmin(reqWith({}), SECRET)).toThrow(UnauthorizedError)
+    await expect(requireAdmin(reqWith({}), SECRET)).rejects.toBeInstanceOf(UnauthorizedError)
   })
 
-  it('is ignored in test env even with flag set', () => {
-    (process.env as Record<string, string | undefined>).NODE_ENV = 'test'
+  it('is ignored in test env even with flag set', async () => {
+    ;(process.env as Record<string, string | undefined>).NODE_ENV = 'test'
     process.env.DEV_BYPASS_AUTH = 'true'
-    expect(() => requireAdmin(reqWith({}), SECRET)).toThrow(UnauthorizedError)
+    await expect(requireAdmin(reqWith({}), SECRET)).rejects.toBeInstanceOf(UnauthorizedError)
   })
 
-  it('is ignored when flag is not exactly "true"', () => {
-    (process.env as Record<string, string | undefined>).NODE_ENV = 'development'
+  it('is ignored when flag is not exactly "true"', async () => {
+    ;(process.env as Record<string, string | undefined>).NODE_ENV = 'development'
     process.env.DEV_BYPASS_AUTH = '1'
-    expect(() => requireAdmin(reqWith({}), SECRET)).toThrow(UnauthorizedError)
+    await expect(requireAdmin(reqWith({}), SECRET)).rejects.toBeInstanceOf(UnauthorizedError)
   })
 })

@@ -93,7 +93,7 @@ export function withController<TBody = void, TParams = unknown, TOutput = unknow
       }
 
       if (options.requireAdmin) {
-        ctx.auth = requireAdmin(request)
+        ctx.auth = await requireAdmin(request)
       }
 
       let body: TBody = undefined as unknown as TBody
