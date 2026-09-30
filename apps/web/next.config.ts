@@ -1,9 +1,15 @@
+import path from 'node:path'
 import type { NextConfig } from 'next'
 
 const config: NextConfig = {
   reactStrictMode: true,
   transpilePackages: ['@artist-outreach/ui', '@artist-outreach/shared', '@artist-outreach/config'],
   typedRoutes: true,
+  // Necesario para Docker: genera .next/standalone con las deps mínimas.
+  output: 'standalone',
+  // Al estar en monorepo pnpm, hay que apuntar Next a la raíz para que
+  // el trace de standalone incluya los packages del workspace.
+  outputFileTracingRoot: path.join(process.cwd(), '../..'),
 
   // El admin (Expo Web SPA) vive bajo /admin/*. Su bundle se copia a
   // public/admin/ en el build (ver script "build"). Cada ruta interna

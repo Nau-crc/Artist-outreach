@@ -1,0 +1,26 @@
+name: Cron — consent queue
+
+# Llama al worker cada 10 min. Sustituye al Vercel Cron.
+# El endpoint /api/cron/consent-queue verifica el header
+# Authorization: Bearer $CRON_SECRET antes de ejecutar.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: consent-queue
+  cancel-in-progress: false
+
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invoke worker
+        run: |
+          curl --fail --silent --show-error \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            "https://${{ secrets.APP_DOMAIN }}/api/cron/consent-queue"

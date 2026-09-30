@@ -1,33 +1,84 @@
-services:
-  postgres:
-    image: postgres:17-alpine
-    container_name: artist_outreach_postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: artist_outreach
-    ports:
-      - '5432:5432'
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
-      interval: 5s
-      timeout: 3s
-      retries: 5
+# docker-compose.yml — Producción en VPS OVH (losxavis.com)
+#
+# Contiene:
+#   - app          : Next.js + admin SPA embebido
+#   - nginx-proxy  : reverse proxy auto-configurado por labels
+#   - acme         : renueva certificados Let's Encrypt automáticamente
+#
+# Requisitos previos en el server:
+#   - Docker + Compose v2 instalados.
+#   - Puertos 80 y 443 abiertos.
+#   - DNS de losxavis.com apuntando a la IP pública del server.
+#   - Archivo .env.production en el mismo directorio (ver .env.production.example).
 
-  mailpit:
-    image: axllent/mailpit:latest
-    container_name: artist_outreach_mailpit
+name: artist-outreach
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        EXPO_PUBLIC_SUPABASE_URL: ${EXPO_PUBLIC_SUPABASE_URL}
+        EXPO_PUBLIC_SUPABASE_ANON_KEY: ${EXPO_PUBLIC_SUPABASE_ANON_KEY}
+        EXPO_PUBLIC_API_URL: ${EXPO_PUBLIC_API_URL}
+    image: artist-outreach-app:latest
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      # nginx-proxy usa estas para configurar el vhost + emitir el cert.
+      VIRTUAL_HOST: ${APP_DOMAIN}
+      VIRTUAL_PORT: '3000'
+      LETSENCRYPT_HOST: ${APP_DOMAIN}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    expose:
+      - '3000'
+    networks:
+      - web
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy:1.6
     restart: unless-stopped
     ports:
-      - '1025:1025' # SMTP
-      - '8025:8025' # UI
+      - '80:80'
+      - '443:443'
+    volumes:
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+      - certs:/etc/nginx/certs
+      - vhost:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - acme:/etc/acme.sh
+    networks:
+      - web
+
+  acme:
+    image: nginxproxy/acme-companion:2.5
+    restart: unless-stopped
+    depends_on:
+      - nginx-proxy
+    volumes_from:
+      - nginx-proxy
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - acme:/etc/acme.sh
     environment:
-      MP_MAX_MESSAGES: 5000
-      MP_SMTP_AUTH_ACCEPT_ANY: 1
-      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+      DEFAULT_EMAIL: ${LETSENCRYPT_EMAIL}
+    networks:
+      - web
 
 volumes:
-  postgres_data:
+  certs:
+  vhost:
+  html:
+  acme:
+
+networks:
+  web:
+    driver: bridge

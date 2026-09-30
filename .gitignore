@@ -18,6 +18,7 @@ coverage
 prisma/dev.db
 prisma/migrations/.snapshot
 .env*
+!.env.production.example
 
 # Generado por el build de apps/web (incluye el bundle del admin SPA).
 apps/web/public/admin/
